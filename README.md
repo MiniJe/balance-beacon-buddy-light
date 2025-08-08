@@ -40,7 +40,7 @@ Complete partner management and email system with document generation and confir
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/balance-beacon-buddy-light.git
+git clone https://github.com/MiniJe/balance-beacon-buddy-light.git
 cd balance-beacon-buddy-light
 
 # Install dependencies
