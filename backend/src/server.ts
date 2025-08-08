@@ -10,6 +10,7 @@ import partenerRoutes from './routes/partener.routes';
 import pdfRoutes from './routes/pdf.routes';
 import contabilRoutes from './routes/contabil.routes';
 import blobRoutes from './routes/blob.routes';
+import localStorageRoutes from './routes/local.storage.routes';
 import backupRoutes from './routes/backup.routes';
 import sesiuniRoutes from './routes/sesiuni.routes';
 import permissionsRoutes from './routes/permissions.routes';
@@ -25,8 +26,12 @@ import autoReminderRoutes from './routes/auto-reminder.routes';
 import reminderSettingsRoutes from './routes/reminder.settings.routes';
 import auditRoutes from './routes/audit.routes'; // ✅ ADĂUGAT: rute pentru audit
 import uploadRoutes from './routes/upload.routes'; // ✅ ADĂUGAT: rute pentru upload fișiere semnate
+import folderSettingsRoutes from './routes/folder.settings.routes'; // ✅ ADĂUGAT: rute pentru setări foldere
+import companySettingsRoutes from './routes/company.settings.routes'; // ✅ ADĂUGAT: rute pentru setări companie
 import { initializeDatabase } from './config/sqlite';
 import { emailService } from './services/email.service';
+import { folderSettingsService } from './services/folder.settings.service';
+import { companySettingsService } from './services/company.settings.service';
 import { healthCheck, readinessCheck } from './controllers/health.controller';
 
 config();
@@ -47,6 +52,16 @@ app.use(express.json());
 initializeDatabase()
     .then(() => {
         console.log('✅ Baza de date SQLite conectată');
+        // Inițializează tabela SetariFoldere
+        return folderSettingsService.initializeFolderSettingsTable();
+    })
+    .then(() => {
+        console.log('✅ Tabela SetariFoldere inițializată');
+        // Inițializează tabela SetariCompanie
+        return companySettingsService.initializeCompanySettingsTable();
+    })
+    .then(() => {
+        console.log('✅ Tabela SetariCompanie inițializată');
         // Inițializează serviciul de email după conectarea la BD
         return emailService.initialize();
     })
@@ -64,6 +79,7 @@ app.use('/api/parteneri', partenerRoutes);
 app.use('/api/pdf', pdfRoutes);
 app.use('/api/contabili', contabilRoutes);
 app.use('/api/storage', blobRoutes);
+app.use('/api/storage/local', localStorageRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/sesiuni', sesiuniRoutes);
 app.use('/api/permissions', permissionsRoutes);
@@ -79,6 +95,8 @@ app.use('/api/auto-reminder', autoReminderRoutes);
 app.use('/api/reminders', reminderSettingsRoutes);
 app.use('/api/audit', auditRoutes); // ✅ ADĂUGAT: rute pentru audit PDF și hash-uri
 app.use('/api/upload', uploadRoutes); // ✅ ADĂUGAT: rute pentru upload fișiere semnate
+app.use('/api/folder-settings', folderSettingsRoutes); // ✅ ADĂUGAT: rute pentru setări foldere
+app.use('/api/company-settings', companySettingsRoutes); // ✅ ADĂUGAT: rute pentru setări companie
 
 // Rută de test pentru debugging autentificare
 app.get('/api/test-auth', authMiddleware, roleMiddleware(['CONTABIL', 'MASTER']), (req: any, res) => {
@@ -87,6 +105,43 @@ app.get('/api/test-auth', authMiddleware, roleMiddleware(['CONTABIL', 'MASTER'])
     message: 'Autentificare reușită!',
     user: req.user 
   });
+});
+
+// Rută de test pentru folder settings (fără autentificare pentru debugging)
+app.get('/api/test-folder-settings', async (req, res) => {
+  try {
+    const folderSettings = await folderSettingsService.getFolderSettings();
+    res.json({ 
+      success: true, 
+      message: 'Setările folderelor au fost încărcate cu succes',
+      data: folderSettings 
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Eroare la încărcarea setărilor folderelor',
+      error: error instanceof Error ? error.message : 'Eroare necunoscută'
+    });
+  }
+});
+
+// Rută de test pentru testarea accesului la foldere
+app.post('/api/test-folder-access', async (req, res) => {
+  try {
+    const { folderPath, folderType } = req.body;
+    const testResult = await folderSettingsService.testFolderAccess(folderPath, folderType);
+    res.json({ 
+      success: true, 
+      message: 'Test acces folder completat',
+      data: testResult 
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Eroare la testarea accesului la folder',
+      error: error instanceof Error ? error.message : 'Eroare necunoscută'
+    });
+  }
 });
 
 // Health check endpoints pentru deployment și monitoring

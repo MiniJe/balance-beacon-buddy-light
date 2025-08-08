@@ -30,7 +30,7 @@ const CompanySettings = () => {
       <CardHeader>
         <CardTitle>Informații Companie</CardTitle>
         <CardDescription>
-          {loading ? "Se încarcă..." : "Actualizează informațiile companiei tale"}
+          {loading ? "Se încarcă..." : " "}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -174,7 +174,7 @@ const CompanySettings = () => {
               size="icon"
               onClick={triggerFileInput}
               disabled={loading || saving || uploadingLogo}
-              title="Încarcă logo în Azure Blob Storage"
+              title="Încarcă logo în storage local"
             >
               {uploadingLogo ? <ReloadIcon className="h-4 w-4 animate-spin" /> : <UploadIcon className="h-4 w-4" />}
             </Button>
@@ -229,7 +229,7 @@ const CompanySettings = () => {
           )}
           
           <p className="text-sm text-muted-foreground mt-1">
-            Pentru o calitate optimă, încărcați un logo în format PNG sau JPG cu fundal transparent. Folosiți butonul de încărcare pentru a salva logo-ul în Azure Blob Storage.
+            Pentru o calitate optimă, încărcați un logo în format PNG sau JPG cu fundal transparent. Folosiți butonul de încărcare pentru a salva logo-ul în storage local.
             {companySettings.cui.trim() === "" && (
               <span className="text-destructive block mt-1">
                 *Trebuie să adăugați CUI-ul companiei înainte de a încărca un logo.

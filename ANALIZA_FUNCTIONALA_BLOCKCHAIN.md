@@ -140,8 +140,8 @@ TimestampBlockchain?: string;
 ReteaBlockchain?: string;
 
 // În JurnalSesiuni.ts:
-hashLogin?: string;
-hashLogout?: string;
+hashLogin?: string; // ✅ PĂSTRAT pentru audit sesiuni
+hashLogout?: string; // ✅ PĂSTRAT pentru audit sesiuni
 transactionIdLogin?: string;
 transactionIdLogout?: string;
 blockchainStatus?: 'pending' | 'confirmed' | 'failed';
@@ -189,8 +189,7 @@ ALTER TABLE JurnalCereriConfirmare DROP COLUMN TimestampBlockchain;
 ALTER TABLE JurnalCereriConfirmare DROP COLUMN ReteaBlockchain;
 
 -- Coloane de eliminat din JurnalSesiuni:
-ALTER TABLE JurnalSesiuni DROP COLUMN HashLogin;
-ALTER TABLE JurnalSesiuni DROP COLUMN HashLogout;
+-- HashLogin și HashLogout PĂSTRATE pentru audit ✅
 ALTER TABLE JurnalSesiuni DROP COLUMN TransactionIdLogin;
 ALTER TABLE JurnalSesiuni DROP COLUMN TransactionIdLogout;
 ALTER TABLE JurnalSesiuni DROP COLUMN BlockchainStatus;

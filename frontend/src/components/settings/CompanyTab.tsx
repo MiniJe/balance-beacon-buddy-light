@@ -88,9 +88,6 @@ export const CompanyTab = () => {
     <Card>
       <CardHeader>
         <CardTitle>Informații Companie</CardTitle>
-        <CardDescription>
-          Actualizează informațiile companiei tale
-        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-4">

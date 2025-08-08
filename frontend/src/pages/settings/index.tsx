@@ -6,6 +6,7 @@ import CompanySettings from "./components/CompanySettings";
 import NotificationsSettings from "./components/NotificationsSettings";
 import BackupManager from "./components/BackupManager";
 import { ContabiliTab } from "@/components/settings/ContabiliTab";
+import { FolderTab } from "@/components/settings/FolderTab";
 
 const Settings = () => {
   const { user } = useAuth();
@@ -25,6 +26,7 @@ const Settings = () => {
         <TabsList>
           <TabsTrigger value="email">Email</TabsTrigger>
           <TabsTrigger value="company">Companie</TabsTrigger>
+          <TabsTrigger value="folders">Foldere</TabsTrigger>
           <TabsTrigger value="notifications">Notificări</TabsTrigger>
           <TabsTrigger value="backups">Backup</TabsTrigger>
           {user?.TipUtilizator === 'MASTER' && <TabsTrigger value="contabili">Contabili</TabsTrigger>}
@@ -36,6 +38,10 @@ const Settings = () => {
         
         <TabsContent value="company" className="space-y-4 mt-6">
           <CompanySettings />
+        </TabsContent>
+        
+        <TabsContent value="folders" className="space-y-4 mt-6">
+          <FolderTab />
         </TabsContent>
         
         <TabsContent value="notifications" className="space-y-4 mt-6">

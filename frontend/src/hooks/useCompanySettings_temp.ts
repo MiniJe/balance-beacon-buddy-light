@@ -131,7 +131,7 @@ export const useCompanySettings = () => {
       } else {
         console.log("Nu există setări pentru companie sau a fost creat un tabel nou");
         if (data.data && data.data.settings) {
-          const fallbackSettings = {
+          setCompanySettings({
             companyName: data.data.settings.NumeCompanie || "",
             cui: data.data.settings.CUICompanie || "",
             email: data.data.settings.EmailCompanie || "",
@@ -142,17 +142,7 @@ export const useCompanySettings = () => {
             onrc: data.data.settings.ONRCCompanie || "",
             contBancar: data.data.settings.ContBancarCompanie || "",
             banca: data.data.settings.BancaCompanie || ""
-          };
-          
-          // Construim URL-ul pentru logo și aici
-          if (data.data.settings.CaleLogoCompanie && 
-              typeof data.data.settings.CaleLogoCompanie === 'string' && 
-              data.data.settings.CaleLogoCompanie.trim() !== '') {
-            const logoUrl = `/api/storage/local/${data.data.settings.CaleLogoCompanie}`;
-            fallbackSettings.logo = logoUrl;
-          }
-          
-          setCompanySettings(fallbackSettings);
+          });
         }
       }
     } catch (error) {
