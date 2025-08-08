@@ -1,0 +1,32 @@
+{
+  "name": "balance-beacon-buddy-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "start:frontend": "npm run dev --workspace=frontend",
+    "build:frontend": "npm run build --workspace=frontend",
+    "start:backend": "npm run dev --workspace=backend",
+    "build:backend": "npm run build --workspace=backend",
+    "install:all": "npm install",
+    "build:all": "npm run build:backend && npm run build:frontend",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "deploy": "npm run build:all && docker-compose up -d --build",
+    "health-check": "curl -f http://localhost:5000/health && curl -f http://localhost:80/",
+    "prod:start": "NODE_ENV=production npm run start:backend",
+    "dev": "concurrently \"npm run start:backend\" \"npm run start:frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
