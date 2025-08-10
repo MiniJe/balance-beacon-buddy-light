@@ -25,7 +25,7 @@ export const EmailTab = () => {
     password: "",
     senderName: "Confirmări Sold",
     senderEmail: "",
-    signature: "Cu stimă,\nEchipa Confirmări Sold\nTel: 0721.234.567"
+    signature: ""  // Eliminăm valoarea hard-coded, va fi încărcată din baza de date
   });
   const [testingEmail, setTestingEmail] = useState(false);
   const [testEmail, setTestEmail] = useState("");
@@ -44,7 +44,7 @@ export const EmailTab = () => {
         return;
       }
 
-      const response = await fetch('/api/email/settings', {
+      const response = await fetch('/api/email-settings', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -52,7 +52,20 @@ export const EmailTab = () => {
 
       if (response.ok) {
         const data = await response.json();
-        setEmailSettings(data);
+        if (data.success && data.settings && data.settings.length > 0) {
+          const emailData = data.settings[0]; // Primul element din array
+          setEmailSettings({
+            smtpServer: emailData.ServerSMTP || "",
+            smtpPort: emailData.PortSMTP?.toString() || "",
+            username: emailData.NumeUtilizatorEmail || "",
+            password: "••••••••••••", // Parola nu se afișează din motive de securitate
+            senderName: emailData.NumeExpeditor || "Confirmări Sold",
+            senderEmail: emailData.EmailExpeditor || "",
+            signature: emailData.SemnaturaEmail || ""  // Încărcăm semnătura din baza de date
+          });
+        } else {
+          console.error("Nu s-au găsit setări de email în baza de date");
+        }
       } else {
         console.error("Eroare la încărcarea setărilor email");
       }
@@ -70,13 +83,23 @@ export const EmailTab = () => {
         return;
       }
 
-      const response = await fetch('/api/email/settings', {
+      const response = await fetch('/api/email-settings', {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(emailSettings)
+        body: JSON.stringify({
+          ServerSMTP: emailSettings.smtpServer,
+          PortSMTP: parseInt(emailSettings.smtpPort) || 587,
+          NumeUtilizatorEmail: emailSettings.username,
+          ParolaEmail: emailSettings.password !== '••••••••••••' ? emailSettings.password : undefined,
+          NumeExpeditor: emailSettings.senderName,
+          EmailExpeditor: emailSettings.senderEmail,
+          SemnaturaEmail: emailSettings.signature,  // Includem și semnătura
+          UtilizeazaSSL: parseInt(emailSettings.smtpPort) === 465,
+          MetodaAutentificare: 'LOGIN'
+        })
       });
 
       if (response.ok) {
@@ -225,9 +248,6 @@ export const EmailTab = () => {
     <Card>
       <CardHeader>
         <CardTitle>Configurații Email</CardTitle>
-        <CardDescription>
-          Configurează setările pentru trimiterea email-urilor
-        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-4">

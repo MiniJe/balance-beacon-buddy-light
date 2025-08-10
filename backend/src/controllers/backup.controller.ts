@@ -1,9 +1,527 @@
 import { Request, Response } from 'express';
 import { pool, backupBlobServiceClient, backupContainerName, blobServiceClient, containerName, templatesContainerName } from '../config/azure';
 import SetariBackupService from '../services/SetariBackupService';
+import { FolderSettingsService } from '../services/folder.settings.service';
 import { ApiResponseHelper } from '../types/api.types';
+import * as fs from 'fs-extra';
+import * as path from 'path';
+
+interface BackupSettings {
+    autoBackupEnabled: boolean;
+    cloudBackupEnabled: boolean;
+    emailNotificationsEnabled: boolean;
+    backupTime: string;
+}
+
+interface TableBackupResult {
+    table: string;
+    records?: number;
+    filePath?: string;
+    status: 'success' | 'error';
+    error?: string;
+}
+
+interface FileBackupResult {
+    source: string;
+    destination: string;
+    status: 'success' | 'error' | 'skipped';
+    size?: number;
+    message?: string;
+    error?: string;
+}
+
+interface LocalBackupItem {
+    id: string;
+    fileName: string;
+    createdAt: string;
+    type: string;
+    size: number;
+    status: string;
+    path: string;
+}
 
 export class BackupController {
+    private folderSettingsService = new FolderSettingsService();
+    
+    // Obține setările de backup
+    async getBackupSettings(req: Request, res: Response): Promise<void> {
+        try {
+            // Pentru moment, returnăm setări statice, dar acestea pot fi stored în baza de date
+            const settings: BackupSettings = {
+                autoBackupEnabled: false,
+                cloudBackupEnabled: true,  // Azure blob storage este activat
+                emailNotificationsEnabled: false,
+                backupTime: "02:00"
+            };
+            
+            res.json(ApiResponseHelper.success(settings, 'Setările de backup au fost obținute cu succes'));
+        } catch (error) {
+            console.error('Eroare la obținerea setărilor de backup:', error);
+            res.status(500).json(ApiResponseHelper.error(
+                'Eroare la obținerea setărilor de backup',
+                'BACKUP_SETTINGS_GET_ERROR',
+                error instanceof Error ? error.message : 'Eroare necunoscută'
+            ));
+        }
+    }
+    
+    // Actualizează setările de backup
+    async updateBackupSettings(req: Request, res: Response): Promise<void> {
+        try {
+            const settings: BackupSettings = req.body;
+            
+            // TODO: Implementează salvarea în baza de date
+            console.log('Setări backup primite pentru actualizare:', settings);
+            
+            res.json(ApiResponseHelper.success(settings, 'Setările de backup au fost actualizate cu succes'));
+        } catch (error) {
+            console.error('Eroare la actualizarea setărilor de backup:', error);
+            res.status(500).json(ApiResponseHelper.error(
+                'Eroare la actualizarea setărilor de backup',
+                'BACKUP_SETTINGS_UPDATE_ERROR',
+                error instanceof Error ? error.message : 'Eroare necunoscută'
+            ));
+        }
+    }
+    
+    // Crează backup manual folosind folder-ul configurat
+    async createManualBackup(req: Request, res: Response): Promise<void> {
+        try {
+            const folderSettings = await this.folderSettingsService.getFolderSettings();
+            const backupPath = folderSettings.backupPath;
+            
+            console.log(`Creez backup manual în folder: ${backupPath}`);
+            
+            // Asigură-te că folder-ul de backup există
+            await fs.ensureDir(backupPath);
+            
+            // Crează backup complet (SQL + Blob + Local files)
+            await this.createFullBackupWithLocalStorage(req, res);
+            
+        } catch (error) {
+            console.error('Eroare la crearea backup-ului manual:', error);
+            res.status(500).json(ApiResponseHelper.error(
+                'Eroare la crearea backup-ului manual',
+                'MANUAL_BACKUP_ERROR',
+                error instanceof Error ? error.message : 'Eroare necunoscută'
+            ));
+        }
+    }
+    
+    // Testează funcționalitatea de backup
+    async testBackup(req: Request, res: Response): Promise<void> {
+        try {
+            const folderSettings = await this.folderSettingsService.getFolderSettings();
+            const backupPath = folderSettings.backupPath;
+            
+            // Testează accesul la folder-ul de backup
+            try {
+                await fs.ensureDir(backupPath);
+                await fs.access(backupPath, fs.constants.R_OK | fs.constants.W_OK);
+            } catch (fsError) {
+                res.json({
+                    success: false,
+                    message: `Eroare la accesarea folder-ului de backup: ${backupPath}`,
+                    error: fsError instanceof Error ? fsError.message : 'Eroare de acces folder'
+                });
+                return;
+            }
+            
+            // Testează conectivitatea la Azure Blob Storage (dacă este configurată)
+            let azureTest = { success: false, message: 'Azure Blob Storage nu este configurat' };
+            if (backupBlobServiceClient) {
+                try {
+                    const containerClient = backupBlobServiceClient.getContainerClient(backupContainerName);
+                    const exists = await containerClient.exists();
+                    azureTest = { 
+                        success: true, 
+                        message: exists ? 'Container de backup există' : 'Container de backup va fi creat la primul backup'
+                    };
+                } catch (azureError) {
+                    azureTest = {
+                        success: false,
+                        message: `Eroare la testarea Azure: ${azureError instanceof Error ? azureError.message : 'Eroare necunoscută'}`
+                    };
+                }
+            }
+            
+            // Testează conectivitatea la baza de date SQL
+            let sqlTest = { success: false, message: 'Eroare la testarea bazei de date' };
+            try {
+                const testResult = await pool.request().query('SELECT 1 as test');
+                sqlTest = { 
+                    success: testResult.recordset.length > 0, 
+                    message: 'Conectarea la baza de date funcționează' 
+                };
+            } catch (sqlError) {
+                sqlTest = {
+                    success: false,
+                    message: `Eroare la testarea SQL: ${sqlError instanceof Error ? sqlError.message : 'Eroare necunoscută'}`
+                };
+            }
+            
+            const allTestsPassed = azureTest.success && sqlTest.success;
+            
+            res.json({
+                success: allTestsPassed,
+                message: allTestsPassed ? 'Toate testele de backup au trecut cu succes' : 'Unele teste au eșuat',
+                tests: {
+                    localFolder: {
+                        success: true,
+                        message: `Folder local de backup accesibil: ${backupPath}`
+                    },
+                    azureStorage: azureTest,
+                    sqlDatabase: sqlTest
+                }
+            });
+            
+        } catch (error) {
+            console.error('Eroare la testarea backup-ului:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Eroare la testarea backup-ului',
+                error: error instanceof Error ? error.message : 'Eroare necunoscută'
+            });
+        }
+    }
+    
+    private async createFullBackupWithLocalStorage(req: Request, res: Response): Promise<void> {
+        try {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const folderSettings = await this.folderSettingsService.getFolderSettings();
+            const backupPath = folderSettings.backupPath;
+            const backupFolder = path.join(backupPath, `backup-${timestamp}`);
+            
+            // Crează folder-ul de backup
+            await fs.ensureDir(backupFolder);
+            
+            console.log(`Creez backup complet în: ${backupFolder}`);
+            
+            const results = {
+                timestamp: timestamp,
+                backupFolder: backupFolder,
+                sqlBackup: null as any,
+                blobBackup: null as any,
+                localFiles: null as any,
+                success: false,
+                message: ''
+            };
+            
+            // 1. Backup SQL către folder local
+            try {
+                const sqlBackupPath = path.join(backupFolder, 'sql-data');
+                await fs.ensureDir(sqlBackupPath);
+                
+                const tables = ['Contabili', 'Parteneri', 'SetariCompanie', 'Utilizatori'];
+                const tableResults: TableBackupResult[] = [];
+                
+                for (const tableName of tables) {
+                    try {
+                        const result = await pool.request().query(`SELECT * FROM ${tableName}`);
+                        const tableData = {
+                            tableName: tableName,
+                            timestamp: new Date().toISOString(),
+                            recordCount: result.recordset.length,
+                            data: result.recordset
+                        };
+                        
+                        const filePath = path.join(sqlBackupPath, `${tableName.toLowerCase()}.json`);
+                        await fs.writeJson(filePath, tableData, { spaces: 2 });
+                        
+                        tableResults.push({
+                            table: tableName,
+                            records: result.recordset.length,
+                            filePath: filePath,
+                            status: 'success'
+                        });
+                        
+                        console.log(`✅ SQL Backup local ${tableName}: ${result.recordset.length} înregistrări`);
+                    } catch (tableError) {
+                        console.error(`Eroare backup tabel ${tableName}:`, tableError);
+                        tableResults.push({
+                            table: tableName,
+                            status: 'error',
+                            error: tableError instanceof Error ? tableError.message : 'Eroare necunoscută'
+                        });
+                    }
+                }
+                
+                results.sqlBackup = {
+                    success: tableResults.some(r => r.status === 'success'),
+                    results: tableResults,
+                    path: sqlBackupPath
+                };
+                
+            } catch (sqlError) {
+                console.error('Eroare la backup SQL local:', sqlError);
+                results.sqlBackup = {
+                    success: false,
+                    error: sqlError instanceof Error ? sqlError.message : 'Backup SQL failed'
+                };
+            }
+            
+            // 2. Backup fișiere locale importante
+            try {
+                const localFilesPath = path.join(backupFolder, 'local-files');
+                await fs.ensureDir(localFilesPath);
+                
+                // Copiază configurările și alte fișiere importante
+                const filesToBackup = [
+                    { source: folderSettings.sabloanePath, dest: path.join(localFilesPath, 'sabloane') },
+                    { source: folderSettings.logosPath, dest: path.join(localFilesPath, 'logos') },
+                    { source: folderSettings.cereriConfirmarePath, dest: path.join(localFilesPath, 'cereri-confirmare') },
+                    { source: folderSettings.cereriSemnatePath, dest: path.join(localFilesPath, 'cereri-semnate') }
+                ];
+                
+                const fileResults: FileBackupResult[] = [];
+                for (const fileInfo of filesToBackup) {
+                    try {
+                        const exists = await fs.pathExists(fileInfo.source);
+                        if (exists) {
+                            await fs.copy(fileInfo.source, fileInfo.dest);
+                            const stats = await fs.stat(fileInfo.dest);
+                            fileResults.push({
+                                source: fileInfo.source,
+                                destination: fileInfo.dest,
+                                status: 'success',
+                                size: stats.size
+                            });
+                            console.log(`✅ Fișiere locale copiate: ${fileInfo.source} -> ${fileInfo.dest}`);
+                        } else {
+                            fileResults.push({
+                                source: fileInfo.source,
+                                destination: fileInfo.dest,
+                                status: 'skipped',
+                                message: 'Folder-ul sursă nu există'
+                            });
+                        }
+                    } catch (fileError) {
+                        console.error(`Eroare backup fișiere ${fileInfo.source}:`, fileError);
+                        fileResults.push({
+                            source: fileInfo.source,
+                            destination: fileInfo.dest,
+                            status: 'error',
+                            error: fileError instanceof Error ? fileError.message : 'Eroare necunoscută'
+                        });
+                    }
+                }
+                
+                results.localFiles = {
+                    success: fileResults.some(r => r.status === 'success'),
+                    results: fileResults,
+                    path: localFilesPath
+                };
+                
+            } catch (localError) {
+                console.error('Eroare la backup fișiere locale:', localError);
+                results.localFiles = {
+                    success: false,
+                    error: localError instanceof Error ? localError.message : 'Backup fișiere locale failed'
+                };
+            }
+            
+            // 3. Opțional: Backup către Azure Blob Storage
+            if (backupBlobServiceClient) {
+                try {
+                    // Call existing blob backup method
+                    const mockReq = { ...req, body: { ...req.body, type: 'MANUAL' } } as Request;
+                    let blobResult: any = null;
+                    
+                    await new Promise<void>((resolve, reject) => {
+                        const mockRes = {
+                            json: (data: any) => {
+                                if (data.success) {
+                                    blobResult = data;
+                                    resolve();
+                                } else {
+                                    reject(new Error(data.message || 'Blob backup failed'));
+                                }
+                            },
+                            status: () => ({
+                                json: (data: any) => reject(new Error(data.message || 'Blob backup failed'))
+                            })
+                        } as any as Response;
+                        
+                        this.createBlobBackup(mockReq, mockRes);
+                    });
+                    
+                    results.blobBackup = blobResult;
+                    console.log('✅ Azure blob backup completed');
+                    
+                } catch (blobError) {
+                    console.error('❌ Azure blob backup failed:', blobError);
+                    results.blobBackup = {
+                        success: false,
+                        error: blobError instanceof Error ? blobError.message : 'Blob backup failed'
+                    };
+                }
+            }
+            
+            // Creează fișierul manifest
+            const manifest = {
+                backupType: 'full-local',
+                timestamp: timestamp,
+                createdAt: new Date().toISOString(),
+                backupFolder: backupFolder,
+                results: results
+            };
+            
+            const manifestPath = path.join(backupFolder, 'manifest.json');
+            await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+            
+            const sqlSuccess = results.sqlBackup?.success || false;
+            const localSuccess = results.localFiles?.success || false;
+            const blobSuccess = results.blobBackup?.success || false;
+            
+            results.success = sqlSuccess || localSuccess; // Success if at least one component succeeds
+            
+            if (results.success) {
+                results.message = `Backup complet creat cu succes în: ${backupFolder}`;
+            } else {
+                results.message = 'Backup-ul a eșuat complet';
+            }
+            
+            console.log(`🎉 Backup local finalizat: ${results.message}`);
+            
+            res.json(ApiResponseHelper.success(results, results.message));
+            
+        } catch (error) {
+            console.error('Eroare la crearea backup-ului complet local:', error);
+            res.status(500).json(ApiResponseHelper.error(
+                'Eroare la crearea backup-ului complet',
+                'FULL_BACKUP_ERROR',
+                error instanceof Error ? error.message : 'Eroare necunoscută'
+            ));
+        }
+    }
+    
+    // Listează backup-urile locale
+    async listLocalBackups(req: Request, res: Response): Promise<void> {
+        try {
+            const folderSettings = await this.folderSettingsService.getFolderSettings();
+            const backupPath = folderSettings.backupPath;
+            
+            const backups: LocalBackupItem[] = [];
+            
+            // Verifică dacă folder-ul de backup există
+            const exists = await fs.pathExists(backupPath);
+            if (!exists) {
+                res.json(ApiResponseHelper.success([], 'Nu există backup-uri locale'));
+                return;
+            }
+            
+            const items = await fs.readdir(backupPath);
+            
+            for (const item of items) {
+                const itemPath = path.join(backupPath, item);
+                const stats = await fs.stat(itemPath);
+                
+                if (stats.isDirectory() && item.startsWith('backup-')) {
+                    const manifestPath = path.join(itemPath, 'manifest.json');
+                    
+                    try {
+                        const manifestExists = await fs.pathExists(manifestPath);
+                        if (manifestExists) {
+                            const manifest = await fs.readJson(manifestPath);
+                            
+                            backups.push({
+                                id: manifest.timestamp || item.replace('backup-', ''),
+                                fileName: `${item}.zip`, // Poți implementa compresie
+                                createdAt: manifest.createdAt || stats.birthtime.toISOString(),
+                                type: 'MANUAL',
+                                size: await this.getFolderSize(itemPath),
+                                status: 'COMPLETED',
+                                path: itemPath
+                            });
+                        }
+                    } catch (manifestError) {
+                        console.error(`Eroare la citirea manifest-ului pentru ${item}:`, manifestError);
+                        // Add backup even without manifest
+                        backups.push({
+                            id: item.replace('backup-', ''),
+                            fileName: `${item}.zip`,
+                            createdAt: stats.birthtime.toISOString(),
+                            type: 'MANUAL',
+                            size: await this.getFolderSize(itemPath),
+                            status: 'COMPLETED',
+                            path: itemPath
+                        });
+                    }
+                }
+            }
+            
+            // Sortează după data creării (cel mai recent primul)
+            backups.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            
+            res.json(ApiResponseHelper.success(backups, 'Backup-uri locale obținute cu succes'));
+            
+        } catch (error) {
+            console.error('Eroare la listarea backup-urilor locale:', error);
+            res.status(500).json(ApiResponseHelper.error(
+                'Eroare la listarea backup-urilor locale',
+                'LIST_LOCAL_BACKUPS_ERROR',
+                error instanceof Error ? error.message : 'Eroare necunoscută'
+            ));
+        }
+    }
+    
+    private async getFolderSize(folderPath: string): Promise<number> {
+        try {
+            let totalSize = 0;
+            const items = await fs.readdir(folderPath, { withFileTypes: true });
+            
+            for (const item of items) {
+                const itemPath = path.join(folderPath, item.name);
+                if (item.isDirectory()) {
+                    totalSize += await this.getFolderSize(itemPath);
+                } else {
+                    const stats = await fs.stat(itemPath);
+                    totalSize += stats.size;
+                }
+            }
+            
+            return totalSize;
+        } catch (error) {
+            console.error('Eroare la calcularea dimensiunii folder-ului:', error);
+            return 0;
+        }
+    }
+    
+    // Descarcă backup local
+    async downloadLocalBackup(req: Request, res: Response): Promise<void> {
+        try {
+            const { backupId } = req.params;
+            const folderSettings = await this.folderSettingsService.getFolderSettings();
+            const backupPath = folderSettings.backupPath;
+            const backupFolder = path.join(backupPath, `backup-${backupId}`);
+            
+            // Verifică dacă backup-ul există
+            const exists = await fs.pathExists(backupFolder);
+            if (!exists) {
+                res.status(404).json(ApiResponseHelper.error(
+                    'Backup-ul nu a fost găsit',
+                    'BACKUP_NOT_FOUND'
+                ));
+                return;
+            }
+            
+            // Pentru moment, returnează path-ul către backup
+            // În viitor, poți implementa compresie ZIP
+            res.json(ApiResponseHelper.success({
+                backupId: backupId,
+                downloadPath: backupFolder,
+                message: 'Backup-ul este disponibil la path-ul specificat'
+            }, 'Backup găsit cu succes'));
+            
+        } catch (error) {
+            console.error('Eroare la descărcarea backup-ului local:', error);
+            res.status(500).json(ApiResponseHelper.error(
+                'Eroare la descărcarea backup-ului local',
+                'DOWNLOAD_LOCAL_BACKUP_ERROR',
+                error instanceof Error ? error.message : 'Eroare necunoscută'
+            ));
+        }
+    }
     // Crează backup pentru Azure Blob Storage
     async createBlobBackup(req: Request, res: Response): Promise<void> {
         let backupId: string | null = null;
@@ -31,6 +549,11 @@ export class BackupController {
                     requestedAt: startTime.toISOString()
                 }
             });
+
+            if (!backupId) {
+                res.status(500).json(ApiResponseHelper.error('Eroare la crearea înregistrării backup', 'BACKUP_RECORD_ERROR'));
+                return;
+            }
 
             const timestamp = backupId.replace('blob-', '');
             const backupFolder = `blob-backups/${timestamp}`;
@@ -197,7 +720,7 @@ export class BackupController {
             await SetariBackupService.updateBackupRecord(backupId, {
                 StatusBackup: statusBackup,
                 DataFinalizare: endTime,
-                DurataSecunde: durataSecunde,
+                DurataBackup: durataSecunde,
                 NumarBloburi: totalBlobs,
                 DimensiuneBlobBytes: totalSize,
                 NumeBloburi: backupResults.map(r => r.blobName),
@@ -235,7 +758,7 @@ export class BackupController {
                     await SetariBackupService.updateBackupRecord(backupId, {
                         StatusBackup: 'failed',
                         DataFinalizare: endTime,
-                        DurataSecunde: durataSecunde,
+                        DurataBackup: durataSecunde,
                         MesajEroare: error instanceof Error ? error.message : 'Eroare necunoscută',
                         ModificatDe: req.body.userId || 'sistem'
                     });

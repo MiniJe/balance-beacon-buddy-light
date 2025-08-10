@@ -354,3 +354,5 @@ export class SetariBackupService {
         }
     }
 }
+
+export default new SetariBackupService();

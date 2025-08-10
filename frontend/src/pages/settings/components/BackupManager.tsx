@@ -245,10 +245,10 @@ const BackupManager = () => {
                 <ReloadIcon className="w-4 h-4 animate-spin mx-auto mb-2" />
                 Se încarcă backup-urile...
               </div>
-            ) : backupHistory.length === 0 ? (
+            ) : !backupHistory || backupHistory.length === 0 ? (
               <p className="p-4 text-center text-muted-foreground">Nu există backup-uri disponibile</p>
             ) : (
-              backupHistory.map((backup) => (
+              (backupHistory || []).map((backup) => (
                 <div key={backup.BackupID} className="flex items-center justify-between p-3 hover:bg-gray-50">
                   <div className="flex items-center gap-3">
                     {getTypeIcon(backup.TipBackup)}

@@ -67,19 +67,39 @@ export const useSetariBackup = () => {
       setLoading(true);
       setError(null);
       
-      const response = await axios.get<BackupHistoryResponse>(
-        `${API_BASE}/history?limit=${limit}&offset=${offset}`,
+      const response = await axios.get(
+        `${API_BASE}/list`,  // Folosim endpoint-ul /list pentru backup-uri locale
         { headers: getHeaders() }
       );
       
       if (response.data.success) {
-        setBackupHistory(response.data.backups);
+        // Adaptare pentru ApiResponseHelper - datele sunt în response.data.data
+        const backups = response.data.data || [];
+        // Convertim backup-urile locale la formatul așteptat
+        const formattedBackups = backups.map((backup: any) => ({
+          ID: backup.id || backup.backupId,
+          BackupID: backup.backupId || backup.id,
+          TipBackup: 'full' as const,
+          StatusBackup: 'completed' as const,
+          DataCreare: backup.createdAt || new Date().toISOString(),
+          DataFinalizare: backup.createdAt || new Date().toISOString(),
+          DurataSecunde: 0,
+          NumarBloburi: 0,
+          DimensiuneBlobBytes: backup.totalSize || 0,
+          DimensiuneSQLBytes: backup.sqlSize || 0,
+          NumarInregistrariSQL: 0,
+          MesajSucces: 'Backup local creat cu succes',
+          CreatDe: 'Sistem'
+        }));
+        setBackupHistory(formattedBackups);
       } else {
         setError(response.data.message || 'Eroare la încărcarea istoricului');
+        setBackupHistory([]);
       }
     } catch (err) {
       console.error('Eroare la încărcarea istoricului backup:', err);
       setError('Eroare la încărcarea datelor');
+      setBackupHistory([]);
     } finally {
       setLoading(false);
     }
@@ -91,13 +111,14 @@ export const useSetariBackup = () => {
       setLoading(true);
       setError(null);
       
-      const response = await axios.get<BackupStatsResponse>(
+      const response = await axios.get(
         `${API_BASE}/stats`,
         { headers: getHeaders() }
       );
       
       if (response.data.success) {
-        setBackupStats(response.data.stats);
+        // Adaptare pentru ApiResponseHelper - datele sunt în response.data.data
+        setBackupStats(response.data.data || null);
       } else {
         setError(response.data.message || 'Eroare la încărcarea statisticilor');
       }
@@ -116,8 +137,11 @@ export const useSetariBackup = () => {
       setError(null);
       
       const response = await axios.post(
-        `${API_BASE}/create-${type}-backup`,
-        { userId: 'utilizator_curent' }, // Înlocuiește cu user ID-ul real
+        `${API_BASE}/create`,
+        { 
+          type: type,
+          userId: 'utilizator_curent' 
+        },
         { headers: getHeaders() }
       );
       
@@ -140,20 +164,25 @@ export const useSetariBackup = () => {
   // Descarcă un backup
   const downloadBackup = async (backupId: string, type?: 'sql' | 'blob' | 'full') => {
     try {
-      const url = type 
-        ? `${API_BASE}/download/${backupId}/${type}`
-        : `${API_BASE}/download/${backupId}`;
+      const url = `${API_BASE}/download/${backupId}`;
         
-      const response = await axios.get(url, { headers: getHeaders() });
+      const response = await axios.get(url, { 
+        headers: getHeaders(),
+        responseType: 'blob'  // Pentru download de fișiere
+      });
       
-      if (response.data.success && response.data.downloadUrl) {
-        // Deschide URL-ul de download într-o fereastră nouă
-        window.open(response.data.downloadUrl, '_blank');
-        return true;
-      } else {
-        setError(response.data.message || 'Eroare la descărcare');
-        return false;
-      }
+      // Creează un link pentru descărcare
+      const blob = new Blob([response.data]);
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `backup-${backupId}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+      
+      return true;
     } catch (err) {
       console.error('Eroare la descărcarea backup-ului:', err);
       setError('Eroare la descărcare');

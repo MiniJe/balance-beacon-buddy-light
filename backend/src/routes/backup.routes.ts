@@ -5,58 +5,51 @@ import { authMiddleware } from '../middleware/auth.middleware';
 const router = Router();
 const backupController = new BackupController();
 
-// Rută pentru crearea backup-ului SQL
-router.post('/create-sql-backup', 
+// Rută pentru obținerea setărilor de backup
+router.get('/settings', 
     authMiddleware,
-    backupController.createSqlBackup.bind(backupController)
+    backupController.getBackupSettings.bind(backupController)
 );
 
-// Rută pentru crearea backup-ului blob
-router.post('/create-blob-backup', 
+// Rută pentru actualizarea setărilor de backup
+router.put('/settings', 
     authMiddleware,
-    backupController.createBlobBackup.bind(backupController)
+    backupController.updateBackupSettings.bind(backupController)
 );
 
-// Rută pentru crearea backup-ului complet (SQL + Blob)
-router.post('/create-full-backup', 
+// Rută pentru crearea backup-ului manual cu folder configurat
+router.post('/create', 
     authMiddleware,
-    backupController.createFullBackup.bind(backupController)
+    backupController.createManualBackup.bind(backupController)
 );
 
-// Rută pentru listarea backup-urilor
+// Rută pentru testarea funcționalității de backup
+router.post('/test', 
+    authMiddleware,
+    backupController.testBackup.bind(backupController)
+);
+
+// Rută pentru listarea backup-urilor locale
 router.get('/list', 
     authMiddleware,
-    backupController.listBackups.bind(backupController)
+    backupController.listLocalBackups.bind(backupController)
 );
 
-// Rută pentru istoricul backup-urilor (cu paginare)
+// Rută pentru descărcarea backup-ului local
+router.get('/download/:backupId', 
+    authMiddleware,
+    backupController.downloadLocalBackup.bind(backupController)
+);
+
+// Rutele pentru compatibilitate cu Azure (returnează răspunsuri goale)
 router.get('/history', 
     authMiddleware,
     backupController.getBackupHistory.bind(backupController)
 );
 
-// Rută pentru statistici backup-uri
 router.get('/stats', 
     authMiddleware,
     backupController.getBackupStats.bind(backupController)
-);
-
-// Rută pentru detaliile unui backup specific
-router.get('/details/:backupId', 
-    authMiddleware,
-    backupController.getBackupDetails.bind(backupController)
-);
-
-// Rută pentru descărcarea unui backup (cu tipul opțional)
-router.get('/download/:backupId', 
-    authMiddleware,
-    backupController.downloadBackup.bind(backupController)
-);
-
-// Rută pentru descărcarea unui backup cu tip specificat
-router.get('/download/:backupId/:type', 
-    authMiddleware,
-    backupController.downloadBackup.bind(backupController)
 );
 
 export default router;

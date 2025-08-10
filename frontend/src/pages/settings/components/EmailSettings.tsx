@@ -158,16 +158,6 @@ const EmailSettings = () => {
               )}
             </Button>
           </div>
-          
-          <div className="bg-muted p-4 rounded-md text-sm text-muted-foreground">
-            <strong>ℹ️ Instrucțiuni:</strong>
-            <ul className="list-disc list-inside mt-2 space-y-1">
-              <li>Introduceți un email valid pentru a primi un mesaj de test cu subiectul "TEST"</li>
-              <li>Parola introdusă va fi folosită pentru autentificare SMTP</li>
-              <li>Butonul "Resetează Parola" va salva parola în format utilizabil pentru SMTP</li>
-              <li>Dacă întâmpinați probleme cu parola hash-uită, folosiți "Resetează Parola"</li>
-            </ul>
-          </div>
         </CardContent>
         <CardFooter>
           <Button onClick={handleSaveEmailSettings}>Salvează Setările</Button>

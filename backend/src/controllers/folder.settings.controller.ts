@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { folderSettingsService } from '../services/folder.settings.service';
+import { folderSettingsService } from '../services';
 
 export class FolderSettingsController {
     constructor() {

@@ -18,7 +18,7 @@ export const useEmailSettings = () => {
     password: "••••••••••••",
     senderName: "Confirmări Sold",
     senderEmail: "",
-    signature: "Cu stimă,\nEchipa Confirmări Sold\nTel: 0721.234.567"
+    signature: ""  // Eliminăm valoarea hard-coded, va fi încărcată din baza de date
   });
   const [loading, setLoading] = useState(true);
   const [testingEmail, setTestingEmail] = useState(false);
@@ -68,7 +68,7 @@ export const useEmailSettings = () => {
             password: "••••••••••••", // Parola nu se afișează din motive de securitate
             senderName: emailData.NumeExpeditor || "Confirmări Sold",
             senderEmail: emailData.EmailExpeditor || "",
-            signature: emailData.SemnaturaEmail || "Cu stimă,\nEchipa Confirmări Sold\nTel: 0721.234.567"
+            signature: emailData.SemnaturaEmail || ""  // Folosim doar ce vine din baza de date
           });
           console.log("Setările de email au fost încărcate cu succes!");
         } else {

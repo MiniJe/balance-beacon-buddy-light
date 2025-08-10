@@ -3,8 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-// Toast removed to eliminate warnings
-import { ReloadIcon, DownloadIcon } from "@radix-ui/react-icons";
+import { ReloadIcon, DownloadIcon, CheckCircledIcon, ExclamationTriangleIcon, InfoCircledIcon } from "@radix-ui/react-icons";
+import { useToast } from "@/hooks/use-toast";
 
 interface BackupItem {
   id: string;
@@ -13,6 +13,7 @@ interface BackupItem {
   type: 'MANUAL' | 'AUTOMATIC';
   size: number;
   status: 'COMPLETED' | 'IN_PROGRESS' | 'FAILED';
+  path?: string;
 }
 
 interface BackupSettings {
@@ -23,6 +24,7 @@ interface BackupSettings {
 }
 
 export const BackupTab = () => {
+  const { toast } = useToast();
   const [backups, setBackups] = useState<BackupItem[]>([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
   const [creatingBackup, setCreatingBackup] = useState(false);
@@ -32,8 +34,9 @@ export const BackupTab = () => {
     autoBackupEnabled: false,
     cloudBackupEnabled: false,
     emailNotificationsEnabled: false,
-    backupTime: "12:30"
+    backupTime: "02:00"
   });
+
   useEffect(() => {
     loadBackupSettings();
     loadBackups();
@@ -43,7 +46,11 @@ export const BackupTab = () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        console.error("Nu ești autentificat. Te rog să te conectezi.");
+        toast({
+          title: "Eroare autentificare",
+          description: "Nu ești autentificat. Te rog să te conectezi.",
+          variant: "destructive"
+        });
         return;
       }
 
@@ -54,8 +61,10 @@ export const BackupTab = () => {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        setSettings(data);
+        const result = await response.json();
+        if (result.success) {
+          setSettings(result.data);
+        }
       } else {
         console.log("Setările de backup nu au fost găsite, se folosesc valorile implicite");
       }
@@ -69,7 +78,11 @@ export const BackupTab = () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        console.error("Nu ești autentificat. Te rog să te conectezi.");
+        toast({
+          title: "Eroare autentificare",
+          description: "Nu ești autentificat. Te rog să te conectezi.",
+          variant: "destructive"
+        });
         return;
       }
 
@@ -80,14 +93,24 @@ export const BackupTab = () => {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        setBackups(data);
+        const result = await response.json();
+        if (result.success) {
+          setBackups(result.data || []);
+        }
       } else {
-        console.error("Eroare la încărcarea backup-urilor");
+        toast({
+          title: "Eroare",
+          description: "Eroare la încărcarea backup-urilor",
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error('Eroare la încărcarea backup-urilor:', error);
-      console.error("Eroare la conectarea cu serverul");
+      toast({
+        title: "Eroare conectare",
+        description: "Eroare la conectarea cu serverul",
+        variant: "destructive"
+      });
     } finally {
       setLoadingBackups(false);
     }
@@ -97,7 +120,11 @@ export const BackupTab = () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        console.error("Nu ești autentificat. Te rog să te conectezi.");
+        toast({
+          title: "Eroare autentificare",
+          description: "Nu ești autentificat. Te rog să te conectezi.",
+          variant: "destructive"
+        });
         return;
       }
 
@@ -112,15 +139,30 @@ export const BackupTab = () => {
       });
 
       if (response.ok) {
-        setSettings(updatedSettings);
-        console.log("Setările de backup au fost salvate cu succes!");
+        const result = await response.json();
+        if (result.success) {
+          setSettings(updatedSettings);
+          toast({
+            title: "Succes",
+            description: "Setările de backup au fost salvate cu succes!",
+            variant: "default"
+          });
+        }
       } else {
         const errorData = await response.json();
-        console.error(`Eroare la salvarea setărilor: ${errorData.message}`);
+        toast({
+          title: "Eroare",
+          description: `Eroare la salvarea setărilor: ${errorData.message}`,
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error('Eroare la salvarea setărilor de backup:', error);
-      console.error("Eroare la conectarea cu serverul");
+      toast({
+        title: "Eroare conectare",
+        description: "Eroare la conectarea cu serverul",
+        variant: "destructive"
+      });
     }
   };
 
@@ -129,7 +171,11 @@ export const BackupTab = () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        console.error("Nu ești autentificat. Te rog să te conectezi.");
+        toast({
+          title: "Eroare autentificare",
+          description: "Nu ești autentificat. Te rog să te conectezi.",
+          variant: "destructive"
+        });
         return;
       }
 
@@ -143,16 +189,30 @@ export const BackupTab = () => {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        console.log("Backup-ul manual a fost creat cu succes!");
-        loadBackups(); // Reîncarcă lista de backup-uri
+        const result = await response.json();
+        if (result.success) {
+          toast({
+            title: "Succes",
+            description: "Backup-ul manual a fost creat cu succes!",
+            variant: "default"
+          });
+          loadBackups(); // Reîncarcă lista de backup-uri
+        }
       } else {
         const errorData = await response.json();
-        console.error(`Eroare la crearea backup-ului: ${errorData.message}`);
+        toast({
+          title: "Eroare",
+          description: `Eroare la crearea backup-ului: ${errorData.message}`,
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error('Eroare la crearea backup-ului:', error);
-      console.error("Eroare la conectarea cu serverul");
+      toast({
+        title: "Eroare conectare",
+        description: "Eroare la conectarea cu serverul",
+        variant: "destructive"
+      });
     } finally {
       setCreatingBackup(false);
     }
@@ -163,7 +223,11 @@ export const BackupTab = () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        console.error("Nu ești autentificat. Te rog să te conectezi.");
+        toast({
+          title: "Eroare autentificare",
+          description: "Nu ești autentificat. Te rog să te conectezi.",
+          variant: "destructive"
+        });
         return;
       }
 
@@ -175,19 +239,40 @@ export const BackupTab = () => {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          console.log("Testul de backup a fost finalizat cu succes!");
+        const result = await response.json();
+        if (result.success) {
+          toast({
+            title: "Test reușit",
+            description: "Testul de backup a fost finalizat cu succes!",
+            variant: "default"
+          });
+          
+          // Afișează detalii despre teste
+          if (result.tests) {
+            console.log("Rezultate teste backup:", result.tests);
+          }
         } else {
-          console.error(`Eroare la testarea backup-ului: ${data.message}`);
+          toast({
+            title: "Test parțial",
+            description: result.message || "Unele teste au eșuat",
+            variant: "destructive"
+          });
         }
       } else {
         const errorData = await response.json();
-        console.error(`Eroare la testarea backup-ului: ${errorData.message}`);
+        toast({
+          title: "Eroare",
+          description: `Eroare la testarea backup-ului: ${errorData.message}`,
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error('Eroare la testarea backup-ului:', error);
-      console.error("Eroare la conectarea cu serverul");
+      toast({
+        title: "Eroare conectare",
+        description: "Eroare la conectarea cu serverul",
+        variant: "destructive"
+      });
     } finally {
       setTestingBackup(false);
     }
@@ -198,7 +283,11 @@ export const BackupTab = () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        console.error("Nu ești autentificat. Te rog să te conectezi.");
+        toast({
+          title: "Eroare autentificare",
+          description: "Nu ești autentificat. Te rog să te conectezi.",
+          variant: "destructive"
+        });
         return;
       }
 
@@ -209,23 +298,34 @@ export const BackupTab = () => {
       });
 
       if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        console.log("Backup-ul a fost descărcat cu succes!");
+        const result = await response.json();
+        if (result.success) {
+          toast({
+            title: "Backup disponibil",
+            description: result.data.message || "Backup-ul este disponibil pentru descărcare",
+            variant: "default"
+          });
+          
+          // Pentru backup-urile locale, informează utilizatorul despre locația fișierului
+          if (result.data.downloadPath) {
+            console.log("Path backup local:", result.data.downloadPath);
+          }
+        }
       } else {
         const errorData = await response.json();
-        console.error(`Eroare la descărcarea backup-ului: ${errorData.message}`);
+        toast({
+          title: "Eroare",
+          description: `Eroare la descărcarea backup-ului: ${errorData.message}`,
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error('Eroare la descărcarea backup-ului:', error);
-      console.error("Eroare la conectarea cu serverul");
+      toast({
+        title: "Eroare conectare",
+        description: "Eroare la conectarea cu serverul",
+        variant: "destructive"
+      });
     } finally {
       setDownloadingBackup(null);
     }
@@ -263,15 +363,26 @@ export const BackupTab = () => {
     }
   };
 
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'COMPLETED': return <CheckCircledIcon className="h-4 w-4 text-green-600" />;
+      case 'IN_PROGRESS': return <ReloadIcon className="h-4 w-4 text-blue-600 animate-spin" />;
+      case 'FAILED': return <ExclamationTriangleIcon className="h-4 w-4 text-red-600" />;
+      default: return <InfoCircledIcon className="h-4 w-4 text-gray-600" />;
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Backup & Securitate</CardTitle>
         <CardDescription>
-          Configurează backup-urile automate și setările de securitate
+          Configurează backup-urile automate și gestionează securitatea datelor. 
+          Backup-urile se salvează în folder-ul configurat la tab-ul "Foldere".
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">        <div className="space-y-4">
+      <CardContent className="space-y-6">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <div className="text-base">Backup automat zilnic</div>
@@ -289,7 +400,7 @@ export const BackupTab = () => {
             <div className="space-y-0.5">
               <div className="text-base">Backup în cloud</div>
               <div className="text-sm text-muted-foreground">
-                Salvează backup-urile în Azure Blob Storage
+                Salvează backup-urile și în Azure Blob Storage (dacă este configurat)
               </div>
             </div>
             <Switch 
@@ -313,7 +424,8 @@ export const BackupTab = () => {
         </div>
         
         <Separator />
-          <div className="flex gap-2">
+        
+        <div className="flex gap-2">
           <Button onClick={createManualBackup} disabled={creatingBackup}>
             {creatingBackup && <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />}
             Creează backup manual
@@ -329,7 +441,8 @@ export const BackupTab = () => {
         </div>
         
         <Separator className="my-4" />
-          <div className="space-y-2">
+        
+        <div className="space-y-2">
           <h3 className="text-sm font-medium">Backup-uri recente</h3>
           
           {loadingBackups ? (
@@ -339,28 +452,33 @@ export const BackupTab = () => {
             </div>
           ) : backups.length === 0 ? (
             <div className="border rounded-md p-6 text-center text-muted-foreground">
-              Nu există backup-uri disponibile
+              <InfoCircledIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p>Nu există backup-uri disponibile</p>
+              <p className="text-xs mt-1">Creează primul backup folosind butonul de mai sus</p>
             </div>
           ) : (
             <div className="border rounded-md divide-y">
               {backups.map((backup) => (
                 <div key={backup.id} className="flex items-center justify-between p-3">
-                  <div>
-                    <p className="font-medium">{formatDate(backup.createdAt)}</p>
-                    <p className="text-sm text-muted-foreground">
-                      <span className={getStatusColor(backup.status)}>
-                        {getBackupTypeLabel(backup.type)}
-                      </span>
-                      {backup.status === 'COMPLETED' && (
-                        <> • {formatFileSize(backup.size)}</>
-                      )}
-                      {backup.status === 'IN_PROGRESS' && (
-                        <> • <span className="text-blue-600">În progres...</span></>
-                      )}
-                      {backup.status === 'FAILED' && (
-                        <> • <span className="text-red-600">Eșuat</span></>
-                      )}
-                    </p>
+                  <div className="flex items-center space-x-3">
+                    {getStatusIcon(backup.status)}
+                    <div>
+                      <p className="font-medium">{formatDate(backup.createdAt)}</p>
+                      <p className="text-sm text-muted-foreground">
+                        <span className={getStatusColor(backup.status)}>
+                          {getBackupTypeLabel(backup.type)}
+                        </span>
+                        {backup.status === 'COMPLETED' && (
+                          <> • {formatFileSize(backup.size)}</>
+                        )}
+                        {backup.status === 'IN_PROGRESS' && (
+                          <> • <span className="text-blue-600">În progres...</span></>
+                        )}
+                        {backup.status === 'FAILED' && (
+                          <> • <span className="text-red-600">Eșuat</span></>
+                        )}
+                      </p>
+                    </div>
                   </div>
                   <Button 
                     variant="outline" 
@@ -386,4 +504,3 @@ export const BackupTab = () => {
     </Card>
   );
 };
-

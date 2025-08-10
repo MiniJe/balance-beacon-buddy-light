@@ -229,7 +229,6 @@ const CompanySettings = () => {
           )}
           
           <p className="text-sm text-muted-foreground mt-1">
-            Pentru o calitate optimă, încărcați un logo în format PNG sau JPG cu fundal transparent. Folosiți butonul de încărcare pentru a salva logo-ul în storage local.
             {companySettings.cui.trim() === "" && (
               <span className="text-destructive block mt-1">
                 *Trebuie să adăugați CUI-ul companiei înainte de a încărca un logo.
