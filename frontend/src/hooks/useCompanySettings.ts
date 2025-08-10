@@ -37,23 +37,10 @@ export const useCompanySettings = () => {
 
   const validateCompanySettings = (): boolean => {
     const errors: {[key: string]: string} = {};
-    
-    if (!companySettings.companyName.trim()) {
-      errors.companyName = "Numele companiei este obligatoriu";
-    }
-    
-    if (!companySettings.cui.trim()) {
-      errors.cui = "CUI-ul companiei este obligatoriu";
-    }
-
-    if (companySettings.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(companySettings.email)) {
-      errors.email = "Adresa de email nu este validă";
-    }
-    
-    if (companySettings.logo && !/^((http|https):\/\/[^ "]+|\/[^ "]+)$/.test(companySettings.logo)) {
-      errors.logo = "URL-ul logo-ului nu este valid";
-    }
-    
+    if (!companySettings.companyName.trim()) errors.companyName = "Numele companiei este obligatoriu";
+    if (!companySettings.cui.trim()) errors.cui = "CUI-ul companiei este obligatoriu";
+    if (companySettings.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(companySettings.email)) errors.email = "Adresa de email nu este validă";
+    // Eliminat: validare URL logo (logo local gestionat de server)
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -286,23 +273,35 @@ export const useCompanySettings = () => {
       }
       
       const data = await response.json();
-      
       if (data.success && data.data && data.data.url) {
-        const cacheBuster = `t=${new Date().getTime()}`;
-        const finalUrl = data.data.url.includes('?') 
-          ? `${data.data.url}&${cacheBuster}` 
-          : `${data.data.url}?${cacheBuster}`;
-          
-        setCompanySettings({
-          ...companySettings,
-          logo: finalUrl,
-          originalLogoUrl: data.data.relativePath || data.data.url
-        });
-        
+        const cacheBuster = `t=${Date.now()}`;
+        const finalUrl = data.data.url.includes('?') ? `${data.data.url}&${cacheBuster}` : `${data.data.url}?${cacheBuster}`;
+        // Dacă vin settings actualizate în răspuns le folosim
+        if (data.data.settings) {
+          const s = data.data.settings;
+          setCompanySettings({
+            companyName: s.NumeCompanie || companySettings.companyName,
+            cui: s.CUICompanie || companySettings.cui,
+            email: s.EmailCompanie || companySettings.email,
+            phone: s.TelefonCompanie || companySettings.phone,
+            address: s.AdresaCompanie || companySettings.address,
+            logo: finalUrl,
+            originalLogoUrl: s.CaleLogoCompanie || data.data.relativePath || data.data.url,
+            onrc: s.ONRCCompanie || companySettings.onrc,
+            contBancar: s.ContBancarCompanie || companySettings.contBancar,
+            banca: s.BancaCompanie || companySettings.banca
+          });
+        } else {
+          setCompanySettings({
+            ...companySettings,
+            logo: finalUrl,
+            originalLogoUrl: data.data.relativePath || data.data.url
+          });
+        }
         localStorage.setItem('originalLogoPath', data.data.relativePath || data.data.url);
-        console.log("Logo încărcat cu succes:", data.data.url);
+        console.log('Logo încărcat cu succes:', data.data.url);
       } else {
-        throw new Error(data.message || "Eroare la încărcarea logo-ului");
+        throw new Error(data.message || 'Eroare la încărcarea logo-ului');
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Eroare necunoscută';
@@ -348,7 +347,7 @@ export const useCompanySettings = () => {
       });
       
       if (response.status === 401) {
-        const errorMsg = "Sesiunea a expirat. Te rog să te connectezi din nou.";
+        const errorMsg = "Sesiunea a expirat. Te rog să te conectezi din nou.";
         setError(errorMsg);
         return;
       }

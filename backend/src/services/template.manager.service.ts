@@ -1,6 +1,14 @@
-import { StorageService } from './storage.service';
+import { folderSettingsService, FolderSettings } from './folder.settings.service';
 import { Partener } from '../models/Partener';
-import { templatesContainerName } from '../config/azure';
+import fs from 'fs';
+import path from 'path';
+
+/**
+ * ⚠️ VERSIUNEA LIGHT - Template Manager cu stocare locală
+ * 
+ * În versiunea LIGHT, template-urile sunt stocate local în folderul configurat
+ * de utilizator prin setările de foldere, în loc de Azure Blob Storage.
+ */
 
 /**
  * Tipuri de template disponibile
@@ -13,7 +21,7 @@ export type TipTemplate = 'client_duc' | 'client_dl' | 'furnizor_duc' | 'furnizo
 interface TemplateConfig {
     readonly tipTemplate: TipTemplate;
     readonly numeTemplate: string;
-    readonly containerAzure: string;
+    readonly caleLocala: string; // În loc de containerAzure
     readonly descriere: string;
 }
 
@@ -33,37 +41,56 @@ interface TemplateCacheEntry {
  */
 export class TemplateManagerService {
     
-    private storageService = new StorageService();
     private templateCache = new Map<string, TemplateCacheEntry>();
     private readonly CACHE_EXPIRY_HOURS = 24; // Template-urile expiră după 24 ore
+    private folderSettings: FolderSettings | null = null;
     
     /**
+     * Inițializează și încarcă setările folderelor
+     */
+    private async loadFolderSettings(): Promise<void> {
+        if (!this.folderSettings) {
+            this.folderSettings = await folderSettingsService.getFolderSettings();
+        }
+    }
+
+    /**
+     * Obține calea completă către un template
+     */
+    private getTemplatePath(numeTemplate: string): string {
+        if (!this.folderSettings) {
+            throw new Error('Setările folderelor nu au fost încărcate. Apelați mai întâi loadFolderSettings().');
+        }
+        return path.join(this.folderSettings.sabloanePath, numeTemplate);
+    }
+
+    /**
      * Configurația template-urilor disponibile
-     * Actualizat cu numele reale din Azure Blob Storage
+     * Actualizat pentru versiunea LIGHT - numele fișierelor din folderul configurat de utilizator
      */
     private readonly templateConfigs: TemplateConfig[] = [
         {
             tipTemplate: 'client_duc',
-            numeTemplate: 'templates/document_template_clienți-duc.docx',
-            containerAzure: templatesContainerName,
+            numeTemplate: 'document_template_clienți-duc.docx',
+            caleLocala: '', // Va fi completată dinamic din setările folderului
             descriere: 'Template pentru clienți persoane juridice DUC'
         },
         {
             tipTemplate: 'client_dl',
-            numeTemplate: 'templates/document_template_clienți-dl.docx',
-            containerAzure: templatesContainerName,
+            numeTemplate: 'document_template_clienți-dl.docx',
+            caleLocala: '', // Va fi completată dinamic din setările folderului
             descriere: 'Template pentru clienți persoane juridice DL'
         },
         {
             tipTemplate: 'furnizor_duc',
-            numeTemplate: 'templates/document_template_furnizori-duc.docx',
-            containerAzure: templatesContainerName,
+            numeTemplate: 'document_template_furnizori-duc.docx',
+            caleLocala: '', // Va fi completată dinamic din setările folderului
             descriere: 'Template pentru furnizori persoane juridice DUC'
         },
         {
             tipTemplate: 'furnizor_dl',
-            numeTemplate: 'templates/document_template_furnizori-dl.docx',
-            containerAzure: templatesContainerName,
+            numeTemplate: 'document_template_furnizori-dl.docx',
+            caleLocala: '', // Va fi completată dinamic din setările folderului
             descriere: 'Template pentru furnizori persoane juridice DL'
         }
     ];
@@ -119,23 +146,32 @@ export class TemplateManagerService {
     }
 
     /**
-     * Descarcă un template din Azure Blob Storage
+     * Descarcă un template din sistemul de fișiere local (din folderul configurat de utilizator)
      */
     private async downloadTemplate(config: TemplateConfig): Promise<Buffer> {
         try {
-            console.log(`📥 Descărcare template: ${config.numeTemplate} din containerul ${config.containerAzure}`);
+            // Încarcă setările folderelor dacă nu sunt încărcate
+            await this.loadFolderSettings();
             
-            const buffer = await this.storageService.downloadFile(
-                config.containerAzure, 
-                config.numeTemplate
-            );
+            const templatePath = this.getTemplatePath(config.numeTemplate);
+            console.log(`📥 Încărcare template local: ${config.numeTemplate} din ${templatePath}`);
             
-            console.log(`✅ Template descărcat cu succes: ${config.numeTemplate} (${buffer.length} bytes)`);
+            // Verifică dacă fișierul există
+            const buffer = await fs.promises.readFile(templatePath);
+            
+            console.log(`✅ Template încărcat cu succes: ${config.numeTemplate} (${buffer.length} bytes)`);
             return buffer;
             
         } catch (error) {
-            console.error(`❌ Eroare la descărcarea template-ului ${config.numeTemplate}:`, error);
-            throw new Error(`Nu s-a putut descărca template-ul ${config.numeTemplate} din containerul ${config.containerAzure}. Verificați că fișierul există.`);
+            console.error(`❌ Eroare la încărcarea template-ului ${config.numeTemplate}:`, error);
+            
+            // În versiunea LIGHT, dacă template-ul nu există, returnăm un buffer gol cu warning
+            const expectedPath = this.folderSettings ? 
+                this.getTemplatePath(config.numeTemplate) : 
+                `folderul de sabloane configurat`;
+                
+            console.warn(`⚠️ Template ${config.numeTemplate} nu există la calea ${expectedPath}. Verifică că fișierul există și că folderul de sabloane este configurat corect în Setări > Foldere.`);
+            return Buffer.alloc(0);
         }
     }
 
@@ -261,7 +297,7 @@ export class TemplateManagerService {
     }
 
     /**
-     * Validează că toate template-urile configurate există în Azure Blob Storage
+     * Validează că toate template-urile configurate există în folderul configurat de utilizator
      */
     async validateAllTemplates(): Promise<{ valide: TipTemplate[]; invalide: TipTemplate[] }> {
         console.log('🔍 Validare template-uri...');
@@ -286,10 +322,15 @@ export class TemplateManagerService {
     }
 
     /**
-     * Obține informații despre toate template-urile configurate
+     * Obține informații despre toate template-urile configurate cu căile complete
      */
-    getTemplateConfigs(): TemplateConfig[] {
-        return [...this.templateConfigs];
+    async getTemplateConfigs(): Promise<TemplateConfig[]> {
+        await this.loadFolderSettings();
+        
+        return this.templateConfigs.map(config => ({
+            ...config,
+            caleLocala: this.getTemplatePath(config.numeTemplate)
+        }));
     }
 }
 

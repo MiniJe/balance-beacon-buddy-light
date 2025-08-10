@@ -376,10 +376,6 @@ export const BackupTab = () => {
     <Card>
       <CardHeader>
         <CardTitle>Backup & Securitate</CardTitle>
-        <CardDescription>
-          Configurează backup-urile automate și gestionează securitatea datelor. 
-          Backup-urile se salvează în folder-ul configurat la tab-ul "Foldere".
-        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-4">
@@ -400,12 +396,12 @@ export const BackupTab = () => {
             <div className="space-y-0.5">
               <div className="text-base">Backup în cloud</div>
               <div className="text-sm text-muted-foreground">
-                Salvează backup-urile și în Azure Blob Storage (dacă este configurat)
+                Backup-uri în cloud momentan nu sunt disponibile în versiunea Light
               </div>
             </div>
             <Switch 
-              checked={settings.cloudBackupEnabled}
-              onCheckedChange={(checked) => saveBackupSettings({ cloudBackupEnabled: checked })}
+              checked={false}
+              disabled={true}
             />
           </div>
           
@@ -423,7 +419,9 @@ export const BackupTab = () => {
           </div>
         </div>
         
-        <Separator />
+        <Separator /> 
+        
+        <Separator /> 
         
         <div className="flex gap-2">
           <Button onClick={createManualBackup} disabled={creatingBackup}>

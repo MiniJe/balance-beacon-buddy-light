@@ -5,6 +5,7 @@ import multer from 'multer';
 import path from 'path';
 import os from 'os';
 import { ApiResponseHelper } from '../types/api.types';
+import { companySettingsService } from '../services/company.settings.service'; // ...added
 
 // Configure multer for temporary file storage
 const storage = multer.diskStorage({
@@ -84,11 +85,34 @@ export class LocalStorageController {
             // Generează URL-ul public
             const publicUrl = localStorageService.getLogoPublicUrl(relativePath);
 
+            // 🔄 Încearcă să actualizezi automat CaleLogoCompanie în setările companiei
+            let updatedCompanySettings: any = null;
+            try {
+                const existing = await companySettingsService.getCompanySettings();
+                if (existing && existing.NumeCompanie) {
+                    await companySettingsService.updateCompanySettings({
+                        NumeCompanie: existing.NumeCompanie,
+                        CUICompanie: existing.CUICompanie,
+                        ONRCCompanie: existing.ONRCCompanie,
+                        AdresaCompanie: existing.AdresaCompanie,
+                        EmailCompanie: existing.EmailCompanie,
+                        TelefonCompanie: existing.TelefonCompanie,
+                        ContBancarCompanie: existing.ContBancarCompanie,
+                        BancaCompanie: existing.BancaCompanie,
+                        CaleLogoCompanie: relativePath
+                    });
+                    updatedCompanySettings = await companySettingsService.getCompanySettings();
+                }
+            } catch (e) {
+                console.warn('⚠️ Nu s-a putut actualiza automat CaleLogoCompanie:', e);
+            }
+
             const response = ApiResponseHelper.success(
                 { 
                     url: publicUrl,
                     relativePath: relativePath,
-                    companyId: companyId
+                    companyId: companyId,
+                    settings: updatedCompanySettings
                 },
                 'Logo-ul a fost încărcat cu succes'
             );
@@ -132,6 +156,26 @@ export class LocalStorageController {
             const success = await localStorageService.deleteCompanyLogo(companyId.trim());
 
             if (success) {
+                // Golește CaleLogoCompanie dacă există setări
+                try {
+                    const existing = await companySettingsService.getCompanySettings();
+                    if (existing && existing.CaleLogoCompanie) {
+                        await companySettingsService.updateCompanySettings({
+                            NumeCompanie: existing.NumeCompanie,
+                            CUICompanie: existing.CUICompanie,
+                            ONRCCompanie: existing.ONRCCompanie,
+                            AdresaCompanie: existing.AdresaCompanie,
+                            EmailCompanie: existing.EmailCompanie,
+                            TelefonCompanie: existing.TelefonCompanie,
+                            ContBancarCompanie: existing.ContBancarCompanie,
+                            BancaCompanie: existing.BancaCompanie,
+                            CaleLogoCompanie: null as any
+                        });
+                    }
+                } catch (e) {
+                    console.warn('⚠️ Nu s-a putut curăța CaleLogoCompanie la ștergere:', e);
+                }
+
                 res.json({
                     success: true,
                     message: 'Logo-ul a fost șters cu succes'

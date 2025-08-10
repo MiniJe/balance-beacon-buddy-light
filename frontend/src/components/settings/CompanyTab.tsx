@@ -1,27 +1,37 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-// Toast removed to eliminate warnings
+import { AlertCircle, Upload, X, Image } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface CompanySettings {
-  companyName: string;
-  cui: string;
-  email: string;
-  phone: string;
-  address: string;
-  logo: string;
+  IdCompanie?: string;
+  NumeCompanie: string;
+  CUICompanie?: string;
+  ONRCCompanie?: string;
+  AdresaCompanie?: string;
+  EmailCompanie?: string;
+  TelefonCompanie?: string;
+  ContBancarCompanie?: string;
+  BancaCompanie?: string;
+  CaleLogoCompanie?: string;
+  DataCreareCompanie?: string;
+  DataModificareCompanie?: string;
 }
 
 export const CompanyTab = () => {
   const [companySettings, setCompanySettings] = useState<CompanySettings>({
-    companyName: "Compania Mea SRL",
-    cui: "RO12345678",
-    email: "office@companiatamea.ro",
-    phone: "0721.234.567",
-    address: "Str. Exemplu nr. 1, București",
-    logo: ""
+    NumeCompanie: "",
+    CUICompanie: "",
+    ONRCCompanie: "",
+    AdresaCompanie: "",
+    EmailCompanie: "",
+    TelefonCompanie: "",
+    ContBancarCompanie: "",
+    BancaCompanie: "",
+    CaleLogoCompanie: ""
   });
 
   useEffect(() => {
@@ -36,22 +46,37 @@ export const CompanyTab = () => {
         return;
       }
 
-      const response = await fetch('/api/company/settings', {
+      console.log("🔄 Încărcare setări companie...");
+      
+      const response = await fetch('/api/company-settings', {
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
       });
 
       if (response.ok) {
-        const data = await response.json();
-        setCompanySettings(data);
+        const result = await response.json();
+        console.log("📊 Răspuns server:", result);
+        
+        // Verifică dacă răspunsul are structura așteptată
+        if (result.success && result.data && result.data.settings) {
+          const settings = result.data.settings;
+          console.log("✅ Setări companie încărcate:", settings);
+          setCompanySettings(settings);
+        } else if (result.data) {
+          // Fallback pentru format direct
+          console.log("✅ Setări companie încărcate (format direct):", result.data);
+          setCompanySettings(result.data);
+        } else {
+          console.log("⚠️ Nu s-au găsit setări companiei în răspuns");
+        }
       } else {
-        // Nu afișăm eroare dacă nu există setări - folosim defaulturile
-        console.log("Setările companiei nu au fost găsite, se folosesc valorile implicite");
+        console.log("⚠️ Setările companiei nu au fost găsite, se folosesc valorile implicite");
+        console.log("Status:", response.status, response.statusText);
       }
     } catch (error) {
-      console.error('Eroare la încărcarea setărilor companiei:', error);
-      // Nu afișăm toast pentru că poate să nu existe încă setările
+      console.error('❌ Eroare la încărcarea setărilor companiei:', error);
     }
   };
 
@@ -63,8 +88,10 @@ export const CompanyTab = () => {
         return;
       }
 
-      const response = await fetch('/api/company/settings', {
-        method: 'PUT',
+      console.log("💾 Salvare setări companie...", companySettings);
+
+      const response = await fetch('/api/company-settings', {
+        method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -73,14 +100,22 @@ export const CompanyTab = () => {
       });
 
       if (response.ok) {
-        console.log("Setările companiei au fost salvate cu succes!");
+        const result = await response.json();
+        console.log("✅ Răspuns salvare:", result);
+        console.log("✅ Setările companiei au fost salvate cu succes!");
+        
+        // Reîncarcă datele pentru a sincroniza cu baza de date
+        await loadCompanySettings();
       } else {
-        const errorData = await response.json();
-        console.error(`Eroare la salvarea setărilor: ${errorData.message}`);
+        const errorData = await response.json().catch(() => null);
+        console.error("❌ Eroare la salvarea setărilor companiei:", {
+          status: response.status,
+          statusText: response.statusText,
+          data: errorData
+        });
       }
     } catch (error) {
-      console.error('Eroare la salvarea setărilor companiei:', error);
-      console.error("Eroare la conectarea cu serverul");
+      console.error('❌ Eroare la salvarea setărilor companiei:', error);
     }
   };
 
@@ -88,6 +123,9 @@ export const CompanyTab = () => {
     <Card>
       <CardHeader>
         <CardTitle>Informații Companie</CardTitle>
+        <CardDescription>
+          Actualizează informațiile companiei tale
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
@@ -95,57 +133,89 @@ export const CompanyTab = () => {
             <Label htmlFor="company-name">Nume companie</Label>
             <Input 
               id="company-name" 
-              value={companySettings.companyName}
-              onChange={(e) => setCompanySettings({...companySettings, companyName: e.target.value})}
+              value={companySettings.NumeCompanie || ""}
+              onChange={(e) => setCompanySettings({...companySettings, NumeCompanie: e.target.value})}
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="company-cui">CUI</Label>
             <Input 
               id="company-cui" 
-              value={companySettings.cui}
-              onChange={(e) => setCompanySettings({...companySettings, cui: e.target.value})}
+              value={companySettings.CUICompanie || ""}
+              onChange={(e) => setCompanySettings({...companySettings, CUICompanie: e.target.value})}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="company-onrc">ONRC</Label>
+            <Input 
+              id="company-onrc" 
+              value={companySettings.ONRCCompanie || ""}
+              onChange={(e) => setCompanySettings({...companySettings, ONRCCompanie: e.target.value})}
+              placeholder="J40/123/2020"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="company-email">Email</Label>
+            <Input 
+              id="company-email" 
+              type="email" 
+              value={companySettings.EmailCompanie || ""}
+              onChange={(e) => setCompanySettings({...companySettings, EmailCompanie: e.target.value})}
             />
           </div>
         </div>
         
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="company-email">Email</Label>
-            <Input 
-              id="company-email" 
-              type="email" 
-              value={companySettings.email}
-              onChange={(e) => setCompanySettings({...companySettings, email: e.target.value})}
-            />
-          </div>
-          <div className="space-y-2">
             <Label htmlFor="company-phone">Telefon</Label>
             <Input 
               id="company-phone" 
-              value={companySettings.phone}
-              onChange={(e) => setCompanySettings({...companySettings, phone: e.target.value})}
+              value={companySettings.TelefonCompanie || ""}
+              onChange={(e) => setCompanySettings({...companySettings, TelefonCompanie: e.target.value})}
             />
           </div>
-        </div>
-        
-        <div className="space-y-2">
+          <div className="space-y-2">
           <Label htmlFor="company-address">Adresă</Label>
           <Input 
             id="company-address" 
-            value={companySettings.address}
-            onChange={(e) => setCompanySettings({...companySettings, address: e.target.value})}
+            value={companySettings.AdresaCompanie || ""}
+            onChange={(e) => setCompanySettings({...companySettings, AdresaCompanie: e.target.value})}
           />
         </div>
+        </div>
         
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+            <Label htmlFor="company-bank">Bancă</Label>
+            <Input 
+              id="company-bank" 
+              value={companySettings.BancaCompanie || ""}
+              onChange={(e) => setCompanySettings({...companySettings, BancaCompanie: e.target.value})}
+              placeholder="Banca Transilvania"
+            />
+          </div>
+        <div className="space-y-2">
+          <Label htmlFor="company-bank-account">Cont bancar</Label>
+          <Input 
+            id="company-bank-account" 
+            value={companySettings.ContBancarCompanie || ""}
+            onChange={(e) => setCompanySettings({...companySettings, ContBancarCompanie: e.target.value})}
+            placeholder="RO49AAAA1B31007593840000"
+          />
+        </div>
+      </div>
+
         <div className="space-y-2">
           <Label htmlFor="company-logo">Logo (URL)</Label>
           <Input 
             id="company-logo" 
             type="url"
             placeholder="https://example.com/logo.png"
-            value={companySettings.logo}
-            onChange={(e) => setCompanySettings({...companySettings, logo: e.target.value})}
+            value={companySettings.CaleLogoCompanie || ""}
+            onChange={(e) => setCompanySettings({...companySettings, CaleLogoCompanie: e.target.value})}
           />
         </div>
         
@@ -156,4 +226,3 @@ export const CompanyTab = () => {
     </Card>
   );
 };
-

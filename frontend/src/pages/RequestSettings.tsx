@@ -8,8 +8,6 @@ import { Step2Configure } from "@/components/requests/Step2Configure";
 import { Step2GenerateDocuments } from "@/components/requests/Step2GenerateDocuments";
 import { Step3UploadFiles } from "@/components/requests/Step3UploadFiles";
 import { Step4ReviewSend } from "@/components/requests/Step4ReviewSend";
-import { AdvancedSettings } from "@/components/requests/AdvancedSettings";
-import { AutoReminderControl } from "@/components/requests/AutoReminderControl";
 
 const RequestSettings = () => {
   const {
@@ -74,7 +72,6 @@ const RequestSettings = () => {
       <Tabs defaultValue="wizard" className="w-full">
         <TabsList>
           <TabsTrigger value="wizard">Asistent Trimitere</TabsTrigger>
-          <TabsTrigger value="settings">Setări Avansate</TabsTrigger>
         </TabsList>
         
         <TabsContent value="wizard" className="space-y-4 mt-6">
@@ -149,11 +146,6 @@ const RequestSettings = () => {
               onSend={handleFinalizeSession}
             />
           )}
-        </TabsContent>
-        
-        <TabsContent value="settings" className="space-y-4 mt-6">
-          <AutoReminderControl />
-          <AdvancedSettings />
         </TabsContent>
       </Tabs>
     </div>

@@ -66,7 +66,7 @@ export const Step1SelectPartners = ({
               onCheckedChange={onSelectAll}
               disabled={loading || filteredPartners.length === 0}
             />
-            <Label htmlFor="selectAll">Selectează toate</Label>
+            <Label htmlFor="selectAll">Selectează</Label>
           </div>
           <Select value={partnerCategory} onValueChange={onFilterChange}>
             <SelectTrigger className="w-[200px]">

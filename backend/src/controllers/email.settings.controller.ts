@@ -225,7 +225,7 @@ export class EmailSettingsController {
                         html: `
                             <h2>✅ Test Configurare Email</h2>
                             <p>Acest email confirmă că configurarea serverului SMTP funcționează corect.</p>
-                            <p><strong>Server:</strong> ${req.body.ServerSMTP || 'N/A'}</p>
+                            <p><strong>Server:</strong> ${req.body.ServerSMTP || 'ZOHO Mail'}</p>
                             <p><strong>Data:</strong> ${new Date().toLocaleString('ro-RO')}</p>
                         `
                     });

@@ -8,11 +8,7 @@ import crypto from 'crypto';
 
 export class EmailController {
     
-    // =============================================================================
-    // FUNCȚII DE TESTARE CONEXIUNE
-    // =============================================================================
-
-    // Testează conexiunea email standard
+    // Testează conexiunea email
     async testEmailConnection(req: Request, res: Response): Promise<void> {
         try {
             const result = await emailService.testConnection();
@@ -40,7 +36,7 @@ export class EmailController {
         }
     }
 
-    // Testează conexiunea cu parolă personalizată
+    // Testează conexiunea email cu parolă din request
     async testEmailConnectionWithPassword(req: Request, res: Response): Promise<void> {
         try {
             const { password } = req.body;
@@ -75,11 +71,94 @@ export class EmailController {
         }
     }
 
-    // =============================================================================
-    // FUNCȚII DE TRIMITERE EMAIL (CONSOLIDATE ȘI OPTIMIZATE)
-    // =============================================================================
+    // Trimite un email de test
+    async sendTestEmail(req: Request, res: Response): Promise<void> {
+        try {
+            const emailData: EmailData = {
+                to: 'office@kappa-test.ro',
+                subject: 'Test Email din Balance Beacon Buddy',
+                text: 'Acesta este un email de test trimis din aplicația Balance Beacon Buddy.',
+                html: '<h1>Email de Test</h1><p>Acesta este un email de test trimis din aplicația Balance Beacon Buddy.</p>'
+            };
 
-    // Trimite email simplu (fără atașament) - pentru remindere, notificări
+            const result = await emailService.sendEmail(emailData);
+            
+            if (result.success) {
+                res.json(ApiResponseHelper.success(
+                    { messageId: result.messageId },
+                    'Email de test trimis cu succes'
+                ));
+            } else {
+                res.status(500).json(ApiResponseHelper.error(
+                    'Eroare la trimiterea email-ului de test',
+                    'TEST_EMAIL_ERROR',
+                    result.error
+                ));
+            }
+            
+        } catch (error) {
+            console.error('Eroare la trimiterea email-ului de test:', error);
+            res.status(500).json(ApiResponseHelper.error(
+                'Eroare la trimiterea email-ului de test',
+                'TEST_EMAIL_ERROR',
+                error instanceof Error ? error.message : 'Eroare necunoscută'
+            ));
+        }
+    }
+
+    // Trimite email de test cu adresa și parola din request
+    async sendTestEmailDynamic(req: Request, res: Response): Promise<void> {
+        try {
+            const { testEmail, password } = req.body;
+            
+            if (!testEmail || !password) {
+                res.status(400).json(ApiResponseHelper.validationError(
+                    'testEmail|password', 
+                    'Adresa de email și parola sunt obligatorii pentru test'
+                ));
+                return;
+            }
+
+            // Validare format email
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(testEmail)) {
+                res.status(400).json(ApiResponseHelper.validationError('testEmail', 'Formatul email-ului nu este valid'));
+                return;
+            }
+
+            const emailData: EmailData = {
+                to: testEmail,
+                subject: 'Test Email din Balance Beacon Buddy',
+                text: 'Acesta este un email de test trimis din aplicația Balance Beacon Buddy.',
+                html: '<h1>Email de Test</h1><p>Acesta este un email de test trimis din aplicația Balance Beacon Buddy.</p>'
+            };
+
+            const result = await emailService.sendEmailWithPlainPassword(emailData, password);
+            
+            if (result.success) {
+                res.json(ApiResponseHelper.success(
+                    { messageId: result.messageId, recipient: testEmail },
+                    'Email de test trimis cu succes'
+                ));
+            } else {
+                res.status(500).json(ApiResponseHelper.error(
+                    'Eroare la trimiterea email-ului de test',
+                    'TEST_EMAIL_DYNAMIC_ERROR',
+                    result.error
+                ));
+            }
+            
+        } catch (error) {
+            console.error('Eroare la trimiterea email-ului de test dinamic:', error);
+            res.status(500).json(ApiResponseHelper.error(
+                'Eroare la trimiterea email-ului de test dinamic',
+                'TEST_EMAIL_DYNAMIC_ERROR',
+                error instanceof Error ? error.message : 'Eroare necunoscută'
+            ));
+        }
+    }
+
+    // Trimite un email simplu
     async sendEmail(req: Request, res: Response): Promise<void> {
         try {
             const { to, cc, bcc, subject, text, html, replyTo } = req.body;
@@ -124,7 +203,7 @@ export class EmailController {
         }
     }
 
-    // Trimite email cu atașament - pentru cereri de confirmare sold
+    // Trimite email cu atașament
     async sendEmailWithAttachment(req: Request, res: Response): Promise<void> {
         try {
             const { to, cc, bcc, subject, text, html, replyTo, attachmentPath, attachmentName } = req.body;
@@ -137,23 +216,21 @@ export class EmailController {
                 return;
             }
 
-            const emailData: EmailData = {
+            const emailData: EmailData & { attachments: any[] } = {
                 to,
                 cc,
                 bcc,
                 subject,
                 text,
                 html,
-                replyTo
+                replyTo,
+                attachments: [{
+                    filename: attachmentName || 'attachment',
+                    path: attachmentPath
+                }]
             };
 
-            const result = await emailService.sendEmailWithAttachment({
-                ...emailData,
-                attachments: [{
-                    path: attachmentPath,
-                    filename: attachmentName
-                }]
-            });
+            const result = await emailService.sendEmailWithAttachment(emailData);
             
             if (result.success) {
                 res.json(ApiResponseHelper.success(
@@ -171,18 +248,14 @@ export class EmailController {
         } catch (error) {
             console.error('Eroare la trimiterea email-ului cu atașament:', error);
             res.status(500).json(ApiResponseHelper.error(
-                'Eroare la trimiterea email-ului cu atașament',
+                'Eroare fatală la trimiterea email-ului cu atașament',
                 'FATAL_SEND_ATTACHMENT_ERROR',
                 error instanceof Error ? error.message : 'Eroare necunoscută'
             ));
         }
     }
 
-    // =============================================================================
-    // FUNCȚIE SPECIALIZATĂ - FIȘE PARTENERI (cu tracking și jurnal)
-    // =============================================================================
-
-    // Trimite email pentru fișe parteneri și înregistrează în baza de date
+    // Trimite email pentru fișe parteneri și înregistrează în baza de date SQLite
     async sendFisePartenerEmail(req: Request, res: Response): Promise<void> {
         try {
             const { 
@@ -204,7 +277,7 @@ export class EmailController {
                 return;
             }
 
-            console.log(`📧 FISE PARTENER: Încerc trimiterea email către ${partnerName} (${partnerEmail}) cu numărul de ordine ${orderNumber}`);
+            console.log(`📧 FISE PARTENER SQLite: Încerc trimiterea email către ${partnerName} (${partnerEmail}) cu numărul de ordine ${orderNumber}`);
 
             // 1. PRIMUL PAS: Trimite email-ul (înainte de orice înregistrare în tabele)
             const emailData: EmailData = {
@@ -221,7 +294,7 @@ export class EmailController {
             }
 
             console.log(`✅ EMAIL TRIMIS: MessageID: ${emailResult.messageId}`);
-            console.log(`🔄 FISE PARTENER: Încep înregistrarea în tabele DUPĂ succesul trimiterii...`);
+            console.log(`🔄 FISE PARTENER SQLite: Încep înregistrarea în tabele DUPĂ succesul trimiterii...`);
 
             // 2. DOAR DUPĂ SUCCESUL TRIMITERII: Înregistrează în tabele
             const emailContentHash = crypto.createHash('sha256')
@@ -242,10 +315,9 @@ export class EmailController {
 
             const documentRecord = await jurnalDocumenteEmiseCleanService.createDocument(documentData);
 
-            console.log(`✅ FISE PARTENER: Document înregistrat în jurnal cu ID: ${documentRecord.IdDocumente}`);
+            console.log(`✅ FISE PARTENER SQLite: Document înregistrat în jurnal cu ID: ${documentRecord.IdDocumente}`);
 
-            // 4. Înregistrează în JurnalEmail folosind structura corectă a tabelei SQLite
-            // VERIFICĂ ÎNTÂI dacă există deja o înregistrare cu acest MessageID
+            // 4. Înregistrează în JurnalEmail folosind SQLite
             const currentDate = new Date().toISOString();
             const emailHash = crypto.createHash('sha256')
                 .update(subject + partnerEmail + (emailResult.messageId || ''))
@@ -264,7 +336,7 @@ export class EmailController {
                 // Există deja o înregistrare - o ACTUALIZEAZĂ cu datele complete
                 emailId = existingEmailCheck.IdJurnalEmail;
                 
-                console.log(`⚠️ FISE PARTENER: Găsită înregistrare existentă cu MessageID ${emailResult.messageId}, actualizez cu datele complete...`);
+                console.log(`⚠️ FISE PARTENER SQLite: Găsită înregistrare existentă cu MessageID ${emailResult.messageId}, actualizez cu datele complete...`);
                 
                 await db.run(`
                     UPDATE JurnalEmail SET
@@ -291,7 +363,7 @@ export class EmailController {
                     emailId
                 ]);
                 
-                console.log(`✅ FISE PARTENER: Înregistrare existentă actualizată cu ID: ${emailId}`);
+                console.log(`✅ FISE PARTENER SQLite: Înregistrare existentă actualizată cu ID: ${emailId}`);
             } else {
                 // Nu există - creează o înregistrare nouă
                 const insertResult = await db.run(`
@@ -317,11 +389,11 @@ export class EmailController {
                 ]);
 
                 emailId = insertResult.lastID?.toString() || crypto.randomUUID();
-                console.log(`✅ FISE PARTENER: Înregistrare nouă creată cu ID: ${emailId}`);
+                console.log(`✅ FISE PARTENER SQLite: Înregistrare nouă creată cu ID: ${emailId}`);
             }
 
-            console.log(`✅ FISE PARTENER: Email înregistrat în jurnal cu EmailID: ${emailId}, DocumentID: ${documentRecord.IdDocumente}`);
-            console.log(`📊 FISE PARTENER: Partner: ${partnerName}, Tip: FISE_PARTENER, Hash: ${emailHash.substring(0, 16)}...`);
+            console.log(`✅ FISE PARTENER SQLite: Email înregistrat în jurnal cu EmailID: ${emailId}, DocumentID: ${documentRecord.IdDocumente}`);
+            console.log(`📊 FISE PARTENER SQLite: Partner: ${partnerName}, Tip: FISE_PARTENER, Hash: ${emailHash.substring(0, 16)}...`);
 
             res.json(ApiResponseHelper.success(
                 { 
@@ -337,7 +409,7 @@ export class EmailController {
             ));
             
         } catch (error) {
-            console.error('❌ FISE PARTENER: Eroare la trimiterea email-ului:', error);
+            console.error('❌ FISE PARTENER SQLite: Eroare la trimiterea email-ului:', error);
             
             // În caz de eroare, NU înregistrăm nimic în tabele
             // Doar returnăm eroarea către frontend
@@ -349,14 +421,10 @@ export class EmailController {
         }
     }
 
-    // =============================================================================
-    // FUNCȚII DE ADMINISTRARE
-    // =============================================================================
-
     // Actualizează parola email
     async updateEmailPassword(req: Request, res: Response): Promise<void> {
         try {
-            const { newPassword } = req.body;
+            const { password, newPassword } = req.body;
             
             if (!newPassword) {
                 res.status(400).json(ApiResponseHelper.validationError('newPassword', 'Noua parolă este obligatorie'));
@@ -388,13 +456,13 @@ export class EmailController {
         }
     }
 
-    // Obține setările de email (fără parolă pentru securitate)
+    // Obține setările de email
     async getEmailSettings(req: Request, res: Response): Promise<void> {
         try {
             const settings = emailService.getEmailSettings();
             
             if (settings) {
-                // Ascunde parola în răspuns pentru securitate
+                // Ascunde parola în răspuns
                 const safeSettings = {
                     ...settings,
                     ParolaEmail: '••••••••••••'

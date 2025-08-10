@@ -1,23 +1,45 @@
-import { blobServiceClient, containerName } from "../config/azure";
-import { BlobSASPermissions } from "@azure/storage-blob";
+import * as fs from 'fs';
+import * as path from 'path';
+import { promisify } from 'util';
+
+/**
+ * ⚠️ VERSIUNEA LIGHT - Stocare locală în loc de Azure Blob Storage
+ * 
+ * Acest serviciu folosește sistemul de fișiere local pentru stocarea fișierelor
+ * în loc de Azure Blob Storage.
+ */
+
+const writeFile = promisify(fs.writeFile);
+const unlink = promisify(fs.unlink);
+const readFile = promisify(fs.readFile);
+const mkdir = promisify(fs.mkdir);
 
 export class StorageService {
-  private containerClient = blobServiceClient.getContainerClient(containerName);
+  private storagePath: string;
+
+  constructor() {
+    // Folosim folderul uploads pentru stocare locală
+    this.storagePath = path.join(process.cwd(), 'uploads');
+    this.ensureStorageDirectory();
+  }
+
+  private async ensureStorageDirectory(): Promise<void> {
+    try {
+      if (!fs.existsSync(this.storagePath)) {
+        await mkdir(this.storagePath, { recursive: true });
+      }
+    } catch (error) {
+      console.error("Error creating storage directory:", error);
+    }
+  }
 
   async uploadFile(fileName: string, fileBuffer: Buffer, contentType: string): Promise<string> {
     try {
-      // Create blob client
-      const blobClient = this.containerClient.getBlockBlobClient(fileName);
-
-      // Upload file
-      await blobClient.uploadData(fileBuffer, {
-        blobHTTPHeaders: {
-          blobContentType: contentType
-        }
-      });
-
-      // Return URL
-      return blobClient.url;
+      const filePath = path.join(this.storagePath, fileName);
+      await writeFile(filePath, fileBuffer);
+      
+      // Returnează URL-ul local pentru accesarea fișierului
+      return `/api/storage/local/files/${fileName}`;
     } catch (error) {
       console.error("Error uploading file:", error);
       throw new Error("Failed to upload file");
@@ -26,8 +48,10 @@ export class StorageService {
 
   async deleteFile(fileName: string): Promise<void> {
     try {
-      const blobClient = this.containerClient.getBlockBlobClient(fileName);
-      await blobClient.delete();
+      const filePath = path.join(this.storagePath, fileName);
+      if (fs.existsSync(filePath)) {
+        await unlink(filePath);
+      }
     } catch (error) {
       console.error("Error deleting file:", error);
       throw new Error("Failed to delete file");
@@ -36,14 +60,9 @@ export class StorageService {
 
   async generateSasUrl(fileName: string, expiryHours: number = 24): Promise<string> {
     try {
-      const blobClient = this.containerClient.getBlockBlobClient(fileName);
-      const expiryDate = new Date();
-      expiryDate.setHours(expiryDate.getHours() + expiryHours);      const sasUrl = await blobClient.generateSasUrl({
-        permissions: BlobSASPermissions.parse("r"),
-        expiresOn: expiryDate
-      });
-
-      return sasUrl;
+      // În versiunea LIGHT, returnăm direct URL-ul local
+      console.warn('⚠️ generateSasUrl în versiunea LIGHT returnează URL local fără expirare');
+      return `/api/storage/local/files/${fileName}`;
     } catch (error) {
       console.error("Error generating SAS URL:", error);
       throw new Error("Failed to generate file access URL");
@@ -52,21 +71,11 @@ export class StorageService {
 
   async downloadFile(containerName: string, fileName: string): Promise<Buffer> {
     try {
-      const containerClient = blobServiceClient.getContainerClient(containerName);
-      const blobClient = containerClient.getBlockBlobClient(fileName);
-      const response = await blobClient.download();
-      
-      if (!response.readableStreamBody) {
-        throw new Error('No readable stream body');
+      const filePath = path.join(this.storagePath, fileName);
+      if (!fs.existsSync(filePath)) {
+        throw new Error('File not found');
       }
-      
-      // Convert stream to buffer
-      const chunks: Buffer[] = [];
-      for await (const chunk of response.readableStreamBody) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      }
-      
-      return Buffer.concat(chunks);
+      return await readFile(filePath);
     } catch (error) {
       console.error("Error downloading file:", error);
       throw new Error("Failed to download file");

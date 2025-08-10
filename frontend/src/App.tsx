@@ -12,7 +12,7 @@ import Reports from "./pages/Reports";
 import RequestSettings from "./pages/RequestSettings";
 import { SoldRequest } from "./pages/SoldRequest";
 import JurnalEmail from "./pages/JurnalEmail";
-import Settings from "./pages/settings/index"; // Import from the explicit index.tsx file
+import Settings from "./pages/Settings"; // Import from the main Settings.tsx file
 import Login from "./pages/Login";
 import SchimbareParola from "./pages/SchimbareParola";
 import NotFound from "./pages/NotFound";

@@ -9,8 +9,8 @@ import emailSettingsRoutes from './routes/email.settings.routes';
 import partenerRoutes from './routes/partener.routes';
 import pdfRoutes from './routes/pdf.routes';
 import contabilRoutes from './routes/contabil.routes';
-import blobRoutes from './routes/blob.routes';
 import localStorageRoutes from './routes/local.storage.routes';
+import logoRoutes from './routes/logo.routes';
 import backupRoutes from './routes/backup.routes';
 import sesiuniRoutes from './routes/sesiuni.routes';
 import permissionsRoutes from './routes/permissions.routes';
@@ -52,17 +52,7 @@ app.use(express.json());
 initializeDatabase()
     .then(() => {
         console.log('✅ Baza de date SQLite conectată');
-        // Inițializează tabela SetariFoldere
-        return folderSettingsService.initializeFolderSettingsTable();
-    })
-    .then(() => {
-        console.log('✅ Tabela SetariFoldere inițializată');
-        // Inițializează tabela SetariCompanie
-        return companySettingsService.initializeCompanySettingsTable();
-    })
-    .then(() => {
-        console.log('✅ Tabela SetariCompanie inițializată');
-        // Inițializează serviciul de email după conectarea la BD
+        // Inițializează doar serviciul de email după conectarea la BD
         return emailService.initialize();
     })
     .then(() => {
@@ -78,8 +68,8 @@ app.use('/api/email-settings', emailSettingsRoutes);
 app.use('/api/parteneri', partenerRoutes);
 app.use('/api/pdf', pdfRoutes);
 app.use('/api/contabili', contabilRoutes);
-app.use('/api/storage', blobRoutes);
 app.use('/api/storage/local', localStorageRoutes);
+app.use('/api/logo', logoRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/sesiuni', sesiuniRoutes);
 app.use('/api/permissions', permissionsRoutes);

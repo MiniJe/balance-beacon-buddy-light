@@ -72,41 +72,37 @@ export class PDFGenerationService {
      * Descarcă template-ul din Azure și îl salvează local pentru utilizare de către Python
      * ✅ OPTIMIZAT: Cache local pentru template-uri
      */
+    /**
+     * ⚠️ VERSIUNEA LIGHT - Obține calea către template din folderul configurat de utilizator
+     * Nu mai descarcă din Azure, ci folosește direct fișierul din folderul local configurat
+     */
     private async downloadTemplateLocally(templateName: string): Promise<string> {
         try {
-            // Creează calea completă cu subdirectoarele necesare
-            const localTemplatePath = path.join(this.tempDir, templateName);
+            // În versiunea LIGHT, template-urile sunt deja în folderul configurat de utilizator
+            // Nu mai descărcăm din Azure, ci obținem direct calea
             
-            // ✅ CACHE: Verifică dacă template-ul există deja local
-            try {
-                await fs.access(localTemplatePath);
-                console.log(`� Template găsit în cache: ${templateName}`);
-                return localTemplatePath; // Template-ul există deja, nu îl mai descărcăm
-            } catch (accessError) {
-                // Template-ul nu există local, trebuie să îl descărcăm
-                console.log(`�📥 Descărcare template local: ${templateName}`);
+            const tipTemplate = this.determineTemplateTypeFromName(templateName);
+            const templateConfigs = await this.templateManager.getTemplateConfigs();
+            const config = templateConfigs.find(c => c.tipTemplate === tipTemplate);
+            
+            if (!config) {
+                throw new Error(`Configurația pentru template-ul ${templateName} nu a fost găsită`);
             }
             
-            // Determină tipul template-ului pe baza numelui
-            const tipTemplate = this.determineTemplateTypeFromName(templateName);
+            // Returnează direct calea către template-ul din folderul configurat
+            console.log(`📁 Template local găsit: ${config.caleLocala}`);
             
-            // Descarcă template-ul din Azure
-            const templateBuffer = await this.templateManager.getTemplate(tipTemplate);
-            
-            const templateDir = path.dirname(localTemplatePath);
-            
-            // Asigură-te că directorul există
-            await fs.mkdir(templateDir, { recursive: true });
-            
-            // Salvează template-ul local
-            await fs.writeFile(localTemplatePath, templateBuffer);
-            
-            console.log(`✅ Template salvat local: ${localTemplatePath}`);
-            return localTemplatePath;
+            // Verifică că fișierul există înainte de a returna calea
+            try {
+                await fs.access(config.caleLocala);
+                return config.caleLocala;
+            } catch (error) {
+                throw new Error(`Template-ul ${templateName} nu a fost găsit la calea ${config.caleLocala}. Verificați că fișierul există în folderul de sabloane configurat în Setări > Foldere.`);
+            }
             
         } catch (error) {
-            console.error(`❌ Eroare la descărcarea template-ului ${templateName}:`, error);
-            throw new Error(`Nu s-a putut descărca template-ul ${templateName}: ${error}`);
+            console.error(`❌ Eroare la accesarea template-ului ${templateName}:`, error);
+            throw error;
         }
     }
 
@@ -124,7 +120,8 @@ export class PDFGenerationService {
     }
 
     /**
-     * Generează un document PDF pentru un partener folosind advanced_pdf_generator.py
+     * ⚠️ VERSIUNEA LIGHT - Generează un document PDF pentru un partener folosind script Python adaptat pentru SQLite
+     * Folosește scriptul Python pentru înlocuirea placeholder-urilor și conversia DOCX → PDF
      */
     async generateDocumentForPartner(
         partener: Partener,
@@ -143,10 +140,10 @@ export class PDFGenerationService {
             // 1. Asigură-te că directorul de output există
             await fs.mkdir(outputDirectory, { recursive: true });
 
-            // 2. Descarcă template-ul local pentru Python
+            // 2. Obține calea template-ului local din folderul configurat
             const localTemplatePath = await this.downloadTemplateLocally(templateName);
             
-            // 3. Calea către scriptul Python avansat
+            // 3. Calea către scriptul Python avansat - VERSIUNEA LIGHT
             const pythonScript = path.join(__dirname, '../../scripts/advanced_pdf_generator.py');
             
             // Verifică că scriptul Python există
@@ -156,21 +153,18 @@ export class PDFGenerationService {
                 throw new Error(`Scriptul Python avansat nu a fost găsit: ${pythonScript}`);
             }
             
-            // 4. Pregătește comanda Python cu parametrii necesari
+            // 4. Pregătește comanda Python cu parametrii pentru SQLite
             const pythonCommand = process.env.PYTHON_EXECUTABLE || (process.platform === 'win32' ? 'py' : 'python3');
             
-            // Obține connection string-ul din variabilele de mediu
-            const server = process.env.DB_SERVER;
-            const database = process.env.DB_NAME;
-            const user = process.env.DB_USER;
-            const password = process.env.DB_PASSWORD;
+            // Calea către baza de date SQLite
+            const dbPath = path.join(process.cwd(), 'data', 'balance-beacon-buddy-light.db');
             
-            if (!server || !database || !user || !password) {
-                throw new Error('Variabilele de mediu pentru Azure SQL nu sunt complete (DB_SERVER, DB_NAME, DB_USER, DB_PASSWORD)');
+            // Verifică că baza de date SQLite există
+            try {
+                await fs.access(dbPath);
+            } catch (error) {
+                throw new Error(`Baza de date SQLite nu a fost găsită: ${dbPath}`);
             }
-            
-            // Construiește connection string-ul pentru Python (pyodbc format)
-            const connectionString = `DRIVER={ODBC Driver 18 for SQL Server};SERVER=${server};DATABASE=${database};UID=${user};PWD=${password};Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;`;
             
             // Formatează data pentru scriptul Python (DD.MM.YYYY)
             const dataEmiterii = new Date().toLocaleDateString('ro-RO');
@@ -179,19 +173,21 @@ export class PDFGenerationService {
             const args = [
                 pythonScript,
                 '--partner-id', partener.idPartener,
-                '--connection-string', connectionString,
+                '--db-path', dbPath,  // SQLite în loc de connection string
                 '--nr-document', numarInregistrare.toString(),
                 '--data-emiterii', dataEmiterii,
                 '--data-sold', dataSoldFormatata,
                 '--template-name', templateName,
-                '--template-path', localTemplatePath,  // ADĂUGAT: calea locală către template
+                '--template-path', localTemplatePath,  // Calea locală către template
                 '--output-dir', outputDirectory,
-                '--json'  // ✅ OPTIMIZARE: Activează silent mode pentru performanță (elimină logging-ul Python)
+                '--json'  // ✅ Activează silent mode pentru performanță
             ];
             
-            console.log(`🐍 Executare script Python avansat pentru generarea PDF...`);
+            console.log(`🐍 Executare script Python avansat (LIGHT) pentru generarea PDF...`);
+            console.log(`📊 Baza de date: ${dbPath}`);
+            console.log(`📄 Template: ${localTemplatePath}`);
             
-            // 4. Execută scriptul Python avansat
+            // 5. Execută scriptul Python avansat
             const result = await this.executeAdvancedPythonScript(pythonCommand, args);
             
             if (!result.success) {
@@ -204,7 +200,7 @@ export class PDFGenerationService {
             console.log(`   - Fișier DOCX: ${result.docx_path}`);
             console.log(`   - Fișier PDF: ${result.pdf_path || 'Nu s-a generat'}`);
             
-            // 5. Calculează informațiile finale pentru document
+            // 6. Calculează informațiile finale pentru document
             const numeDocument = path.basename(result.pdf_path || result.docx_path);
             const caleFisier = result.pdf_path || result.docx_path;
             
@@ -289,7 +285,7 @@ export class PDFGenerationService {
     }
 
     /**
-     * Generează documente folosind advanced_pdf_generator.py pentru mai mulți parteneri
+     * Generează documente folosind script Python adaptat pentru SQLite pentru mai mulți parteneri
      */
     async generateDocumentsForPartners(
         parteneri: Partener[],
@@ -302,7 +298,7 @@ export class PDFGenerationService {
         numarSesiune?: string
     ): Promise<GeneratedDocument[]> {
         try {
-            console.log(`📦 Generare în lot pentru ${parteneri.length} parteneri folosind advanced_pdf_generator.py`);
+            console.log(`📦 Generare în lot pentru ${parteneri.length} parteneri folosind script Python (LIGHT)`);
             console.log(`👤 Utilizator: ${utilizatorData?.nume || 'Necunoscut'}`);
             console.log(`🗓️ Data sold: ${dataSold}`);
             console.log(`📋 Template: ${templateName}`);
@@ -312,7 +308,7 @@ export class PDFGenerationService {
             
             const documenteGenerate: GeneratedDocument[] = [];
             
-            // Generează documentele pentru fiecare partener folosind advanced_pdf_generator.py
+            // Generează documentele pentru fiecare partener
             for (let i = 0; i < parteneri.length; i++) {
                 const partener = parteneri[i];
                 const numarInregistrare = numerePornire + i;
@@ -350,7 +346,7 @@ export class PDFGenerationService {
     }
 
     /**
-     * Generează un document de test pentru verificarea funcționalității folosind advanced_pdf_generator.py
+     * Generează un document de test pentru verificarea funcționalității folosind script Python adaptat pentru SQLite
      */
     async generateTestDocument(
         outputDirectory: string,
@@ -358,7 +354,7 @@ export class PDFGenerationService {
         utilizatorData?: any
     ): Promise<GeneratedDocument> {
         try {
-            console.log('🧪 Generare document de test folosind advanced_pdf_generator.py...');
+            console.log('🧪 Generare document de test folosind script Python avansat (LIGHT)...');
             console.log(`📋 Template test: ${templateName}`);
             
             // Partener de test

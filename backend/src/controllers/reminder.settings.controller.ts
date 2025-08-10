@@ -22,14 +22,20 @@ export class ReminderSettingsController {
             const db = await getDatabase();
             const dbSettings = await db.get(`
                 SELECT 
-                    COALESCE(AutoReminderEnabled, 0) as AutoReminderEnabled,
-                    COALESCE(DaysBeforeReminder, 7) as DaysBeforeReminder,
-                    COALESCE(ReminderIntervalDays, 3) as ReminderIntervalDays,
-                    COALESCE(UrgentThresholdDays, 14) as UrgentThresholdDays,
-                    COALESCE(EnableTrackingInReminders, 1) as EnableTrackingInReminders,
-                    COALESCE(UrmaresteDeschdereEmailurilor, 1) as UrmaresteDeschdereEmailurilor
-                FROM SetariEmail 
-                WHERE IdEmail IS NOT NULL
+                    AutoReminderEnabled,
+                    DaysBeforeReminder,
+                    ReminderIntervalDays,
+                    MaxReminders,
+                    UrgentThresholdDays,
+                    TrackOpens,
+                    EnableTrackingInReminders,
+                    CcSelf,
+                    EnablePartnerTracking,
+                    DefaultPartnerReminders,
+                    PartnerReminderInterval
+                FROM SetariAvansate 
+                ORDER BY Id DESC 
+                LIMIT 1
             `);
 
             let settings: ReminderSettings;
@@ -39,9 +45,9 @@ export class ReminderSettingsController {
                     autoReminderEnabled: Boolean(dbSettings.AutoReminderEnabled),
                     daysBeforeReminder: dbSettings.DaysBeforeReminder,
                     reminderIntervalDays: dbSettings.ReminderIntervalDays,
-                    maxReminders: 2, // Valoare fixă pentru moment
-                    ccSelf: true, // Valoare fixă pentru moment
-                    trackOpens: Boolean(dbSettings.UrmaresteDeschdereEmailurilor),
+                    maxReminders: dbSettings.MaxReminders,
+                    ccSelf: Boolean(dbSettings.CcSelf),
+                    trackOpens: Boolean(dbSettings.TrackOpens),
                     enableTrackingInReminders: Boolean(dbSettings.EnableTrackingInReminders),
                     urgentThresholdDays: dbSettings.UrgentThresholdDays
                 };
@@ -116,55 +122,61 @@ export class ReminderSettingsController {
                 return;
             }
 
-            // Verifică dacă există deja setări în baza de date
             const db = await getDatabase();
+            
+            // Verifică dacă există deja setări în tabelul SetariAvansate
             const existingSettings = await db.get(`
-                SELECT COUNT(*) as SettingsCount 
-                FROM SetariEmail 
-                WHERE IdEmail IS NOT NULL
+                SELECT Id FROM SetariAvansate LIMIT 1
             `);
 
-            const settingsExist = existingSettings?.SettingsCount > 0;
-
-            if (settingsExist) {
-                // Actualizează setările existente (doar câmpurile care există în tabelă)
+            if (existingSettings) {
+                // Actualizează setările existente
                 await db.run(`
-                    UPDATE SetariEmail 
+                    UPDATE SetariAvansate 
                     SET 
                         AutoReminderEnabled = ?,
                         DaysBeforeReminder = ?,
                         ReminderIntervalDays = ?,
+                        MaxReminders = ?,
                         UrgentThresholdDays = ?,
+                        TrackOpens = ?,
                         EnableTrackingInReminders = ?,
-                        UrmaresteDeschdereEmailurilor = ?
-                    WHERE IdEmail IS NOT NULL
+                        CcSelf = ?,
+                        DataUltimeiModificari = CURRENT_TIMESTAMP
+                    WHERE Id = ?
                 `, [
                     autoReminderEnabled ? 1 : 0,
                     daysBeforeReminder,
                     reminderIntervalDays,
+                    maxReminders,
                     urgentThresholdDays || 14,
+                    trackOpens ? 1 : 0,
                     enableTrackingInReminders ? 1 : 0,
-                    trackOpens ? 1 : 0
+                    ccSelf ? 1 : 0,
+                    existingSettings.Id
                 ]);
             } else {
-                // Pentru că tabela are deja date, nu vom face INSERT
-                // În schimb, vom actualiza înregistrarea existentă
+                // Inserează setări noi
                 await db.run(`
-                    UPDATE SetariEmail 
-                    SET 
-                        AutoReminderEnabled = ?,
-                        DaysBeforeReminder = ?,
-                        ReminderIntervalDays = ?,
-                        UrgentThresholdDays = ?,
-                        EnableTrackingInReminders = ?,
-                        UrmaresteDeschdereEmailurilor = ?
+                    INSERT INTO SetariAvansate (
+                        AutoReminderEnabled,
+                        DaysBeforeReminder,
+                        ReminderIntervalDays,
+                        MaxReminders,
+                        UrgentThresholdDays,
+                        TrackOpens,
+                        EnableTrackingInReminders,
+                        CcSelf
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 `, [
                     autoReminderEnabled ? 1 : 0,
                     daysBeforeReminder,
                     reminderIntervalDays,
+                    maxReminders,
                     urgentThresholdDays || 14,
+                    trackOpens ? 1 : 0,
                     enableTrackingInReminders ? 1 : 0,
-                    trackOpens ? 1 : 0
+                    ccSelf ? 1 : 0
                 ]);
             }
 

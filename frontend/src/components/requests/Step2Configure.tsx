@@ -41,8 +41,7 @@ export const Step2Configure = ({
       <CardHeader>
         <CardTitle>2. Configurează Cererea</CardTitle>
         <CardDescription>
-          Setează data pentru confirmare sold și configurează sesiunea. 
-          Aplicația va descărca automat șabloanele docx din Azure Blob Storage și va genera documentele PDF.
+          Setează data pentru confirmare sold și configurează sesiunea.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

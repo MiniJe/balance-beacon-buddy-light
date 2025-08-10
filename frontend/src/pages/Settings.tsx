@@ -4,6 +4,8 @@ import { ContabiliTab } from "@/components/settings/ContabiliTab";
 import { EmailTab } from "@/components/settings/EmailTab";
 import { CompanyTab } from "@/components/settings/CompanyTab";
 import { BackupTab } from "@/components/settings/BackupTab";
+import { FolderTab } from "@/components/settings/FolderTab";
+import { AdvancedSettingsTab } from "@/components/settings/AdvancedSettingsTab";
 
 const Settings = () => {
   const { user, isMaster } = useAuth();
@@ -19,9 +21,11 @@ const Settings = () => {
         </div>
         
         <Tabs defaultValue="email" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className={`grid w-full ${isMaster() ? 'grid-cols-6' : 'grid-cols-5'}`}>
             <TabsTrigger value="email">Email</TabsTrigger>
             <TabsTrigger value="company">Companie</TabsTrigger>
+            <TabsTrigger value="folders">Foldere</TabsTrigger>
+            <TabsTrigger value="advanced">Setări Avansate</TabsTrigger>
             <TabsTrigger value="backup">Backup</TabsTrigger>
             {isMaster() && (
               <TabsTrigger value="contabili">Contabili</TabsTrigger>
@@ -34,6 +38,14 @@ const Settings = () => {
           
           <TabsContent value="company" className="space-y-4 mt-6">
             <CompanyTab />
+          </TabsContent>
+          
+          <TabsContent value="folders" className="space-y-4 mt-6">
+            <FolderTab />
+          </TabsContent>
+          
+          <TabsContent value="advanced" className="space-y-4 mt-6">
+            <AdvancedSettingsTab />
           </TabsContent>
           
           <TabsContent value="backup" className="space-y-4 mt-6">

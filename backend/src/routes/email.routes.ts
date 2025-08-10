@@ -18,17 +18,8 @@ router.post('/test-connection-with-password',
     emailController.testEmailConnectionWithPassword.bind(emailController)
 );
 
-router.post('/send-test', 
-    authMiddleware, 
-    roleMiddleware(['MASTER']),
-    emailController.sendTestEmail.bind(emailController)
-);
-
-router.post('/send-test-dynamic', 
-    authMiddleware, 
-    roleMiddleware(['MASTER']),
-    emailController.sendTestEmailDynamic.bind(emailController)
-);
+// NOTĂ: Funcțiile sendTestEmail și sendTestEmailDynamic au fost mutate în email.settings.controller.ts
+// Rutele /send-test și /send-test-dynamic sunt acum disponibile prin /api/email-settings/
 
 router.post('/send', 
     authMiddleware, 

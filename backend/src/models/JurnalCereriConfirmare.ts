@@ -19,10 +19,7 @@ export interface JurnalCereriConfirmare {
     DataIncarcareSemnatura?: string | null; // DATETIME2(7) - data încărcării semnăturii
     Observatii?: string | null; // NVARCHAR(1000) - observații
     HashDocument?: string | null; // NVARCHAR(128) - hash document
-    HashTranzactieBlockchain?: string | null; // NVARCHAR(100) - hash blockchain
-    StareBlockchain?: string | null; // NVARCHAR(50) - starea blockchain
-    TimestampBlockchain?: string | null; // DATETIME2(7) - timestamp blockchain
-    ReteaBlockchain?: string | null; // NVARCHAR(50) - rețeaua blockchain
+    // Coloanele blockchain au fost eliminate din varianta light
 }
 
 /**
@@ -42,10 +39,7 @@ export interface CreateJurnalCereriConfirmareDto {
     DataIncarcareSemnatura?: string; // DATETIME2(7) - data încărcării semnăturii
     Observatii?: string; // NVARCHAR(1000) - observații
     HashDocument?: string; // NVARCHAR(128) - hash document
-    HashTranzactieBlockchain?: string; // NVARCHAR(100) - hash blockchain
-    StareBlockchain?: string; // NVARCHAR(50) - starea blockchain
-    TimestampBlockchain?: string; // DATETIME2(7) - timestamp blockchain
-    ReteaBlockchain?: string; // NVARCHAR(50) - rețeaua blockchain
+    // Coloanele blockchain au fost eliminate din varianta light
 }
 
 /**
@@ -58,10 +52,7 @@ export interface UpdateJurnalCereriConfirmareDto {
     DataIncarcareSemnatura?: string;
     Observatii?: string;
     HashDocument?: string;
-    HashTranzactieBlockchain?: string;
-    StareBlockchain?: string;
-    TimestampBlockchain?: string;
-    ReteaBlockchain?: string;
+    // Coloanele blockchain au fost eliminate din varianta light
 }
 
 /**
