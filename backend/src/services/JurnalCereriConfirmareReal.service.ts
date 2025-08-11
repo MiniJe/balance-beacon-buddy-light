@@ -51,11 +51,7 @@ export class JurnalCereriConfirmareRealService {
             URLFisierSemnat: dbRow.URLFisierSemnat,
             DataIncarcareSemnatura: dbRow.DataIncarcareSemnatura?.toISOString?.() || dbRow.DataIncarcareSemnatura,
             Observatii: dbRow.Observatii,
-            HashDocument: dbRow.HashDocument,
-            HashTranzactieBlockchain: dbRow.HashTranzactieBlockchain,
-            StareBlockchain: dbRow.StareBlockchain,
-            TimestampBlockchain: dbRow.TimestampBlockchain,
-            ReteaBlockchain: dbRow.ReteaBlockchain
+            HashDocument: dbRow.HashDocument
         };
     }
 
@@ -65,26 +61,24 @@ export class JurnalCereriConfirmareRealService {
     async createCerereConfirmare(cerereData: CreateJurnalCereriConfirmareDto): Promise<JurnalCereriConfirmare> {
         try {
             const db = await getDatabase();
-            
+            // 🔐 Generăm manual PK deoarece în schema este TEXT cu default expression; evităm reliance pe lastID numeric
+            const newId = crypto.randomUUID();
+            const nowISO = new Date().toISOString();
             const stmt = await db.prepare(`
                 INSERT INTO JurnalCereriConfirmare (
-                    IdPartener, IdSetariCompanie, DataCerere, NumeFisier, URLFisier,
+                    IdJurnal, IdPartener, IdSetariCompanie, DataCerere, NumeFisier, URLFisier,
                     Stare, LotId, CreatDe, TrimisDe, DataTrimitere,
-                    URLFisierSemnat, DataIncarcareSemnatura, Observatii, HashDocument,
-                    HashTranzactieBlockchain, StareBlockchain, TimestampBlockchain, ReteaBlockchain
+                    URLFisierSemnat, DataIncarcareSemnatura, Observatii, HashDocument
                 )
                 VALUES (
-                    ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?,
-                    ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
             `);
-            
-            const result = await stmt.run(
+            await stmt.run(
+                newId,
                 cerereData.IdPartener,
                 cerereData.IdSetariCompanie || null,
-                new Date().toISOString(),
+                nowISO,
                 cerereData.NumeFisier || null,
                 cerereData.URLFisier || null,
                 cerereData.Stare || 'in_asteptare',
@@ -95,26 +89,19 @@ export class JurnalCereriConfirmareRealService {
                 cerereData.URLFisierSemnat || null,
                 cerereData.DataIncarcareSemnatura || null,
                 cerereData.Observatii || null,
-                cerereData.HashDocument || null,
-                cerereData.HashTranzactieBlockchain || null,
-                cerereData.StareBlockchain || null,
-                cerereData.TimestampBlockchain ? new Date(cerereData.TimestampBlockchain).toISOString() : null,
-                cerereData.ReteaBlockchain || null
+                cerereData.HashDocument || null
             );
-            
-            // Obține înregistrarea inserată
-            const insertedRecord = await db.get('SELECT * FROM JurnalCereriConfirmare WHERE IdJurnal = ?', result.lastID);
-            
+            // Selectăm direct după IdJurnal (știm valoarea)
+            const insertedRecord = await db.get('SELECT * FROM JurnalCereriConfirmare WHERE IdJurnal = ?', newId);
             if (!insertedRecord) {
+                // Diagnostic fallback – verificăm ultimul rowid dacă ceva neașteptat s-a întâmplat
+                const probe = await db.get('SELECT rowid,* FROM JurnalCereriConfirmare ORDER BY rowid DESC LIMIT 1');
+                console.error('⚠️ Insert efectuat dar select-ul după IdJurnal a eșuat', { newId, probe });
                 throw new Error('Cererea nu a putut fi creată');
             }
-            
-            // Convertim datele SQL la format TypeScript
             const cerere = this.formatCerereFromDB(insertedRecord);
-            
             console.log(`✅ Cerere de confirmare creată cu succes: ${cerere.IdJurnal} pentru partenerul ${cerere.IdPartener}`);
             return cerere;
-            
         } catch (error) {
             console.error('Eroare la crearea cererii de confirmare:', error);
             throw new Error(`Eroare la crearea cererii de confirmare: ${error instanceof Error ? error.message : 'Eroare necunoscută'}`);
@@ -124,9 +111,10 @@ export class JurnalCereriConfirmareRealService {
     /**
      * Actualizează statusul unei cereri de confirmare
      */
-    async updateCerereConfirmare(idCerere: number, updateData: UpdateJurnalCereriConfirmareDto): Promise<JurnalCereriConfirmare> {
+    async updateCerereConfirmare(idCerere: string | number, updateData: UpdateJurnalCereriConfirmareDto): Promise<JurnalCereriConfirmare> {
         try {
             const db = await getDatabase();
+            const idStr = String(idCerere);
             
             // Construim query-ul UPDATE dinamic
             const setClauses: string[] = [];
@@ -162,26 +150,6 @@ export class JurnalCereriConfirmareRealService {
                 values.push(updateData.HashDocument);
             }
 
-            if (updateData.HashTranzactieBlockchain !== undefined) {
-                setClauses.push('HashTranzactieBlockchain = ?');
-                values.push(updateData.HashTranzactieBlockchain);
-            }
-
-            if (updateData.StareBlockchain !== undefined) {
-                setClauses.push('StareBlockchain = ?');
-                values.push(updateData.StareBlockchain);
-            }
-
-            if (updateData.TimestampBlockchain !== undefined) {
-                setClauses.push('TimestampBlockchain = ?');
-                values.push(updateData.TimestampBlockchain);
-            }
-
-            if (updateData.ReteaBlockchain !== undefined) {
-                setClauses.push('ReteaBlockchain = ?');
-                values.push(updateData.ReteaBlockchain);
-            }
-
             if (setClauses.length === 0) {
                 throw new Error('Nu au fost furnizate date pentru actualizare');
             }
@@ -196,18 +164,13 @@ export class JurnalCereriConfirmareRealService {
             `;
             
             const result = await db.run(query, ...values);
-            
             if (result.changes === 0) {
                 throw new Error('Cererea nu a fost găsită sau nu a putut fi actualizată');
             }
-            
-            // Obține înregistrarea actualizată
-            const updatedRecord = await db.get('SELECT * FROM JurnalCereriConfirmare WHERE IdJurnal = ?', idCerere);
+            const updatedRecord = await db.get('SELECT * FROM JurnalCereriConfirmare WHERE IdJurnal = ?', idStr);
             const cerere = this.formatCerereFromDB(updatedRecord);
-            
             console.log(`Cerere de confirmare actualizată cu succes: ${cerere.IdJurnal}`);
             return cerere;
-            
         } catch (error) {
             console.error('Eroare la actualizarea cererii de confirmare:', error);
             throw new Error(`Eroare la actualizarea cererii de confirmare: ${error instanceof Error ? error.message : 'Eroare necunoscută'}`);
@@ -217,17 +180,14 @@ export class JurnalCereriConfirmareRealService {
     /**
      * Obține o cerere după ID
      */
-    async getCerereById(idCerere: number): Promise<JurnalCereriConfirmare | null> {
+    async getCerereById(idCerere: string | number): Promise<JurnalCereriConfirmare | null> {
         try {
             const db = await getDatabase();
-            
-            const cerere = await db.get('SELECT * FROM JurnalCereriConfirmare WHERE IdJurnal = ?', idCerere);
-            
-            if (!cerere) {
-                return null;
-            }
-
-            return this.formatCerereFromDB(cerere);        } catch (error) {
+            const idStr = String(idCerere);
+            const cerere = await db.get('SELECT * FROM JurnalCereriConfirmare WHERE IdJurnal = ?', idStr);
+            if (!cerere) return null;
+            return this.formatCerereFromDB(cerere);
+        } catch (error) {
             console.error('Eroare la căutarea cererii de confirmare:', error);
             throw new Error(`Eroare la căutarea cererii de confirmare: ${error instanceof Error ? error.message : 'Eroare necunoscută'}`);
         }
@@ -292,11 +252,6 @@ export class JurnalCereriConfirmareRealService {
             if (filtru.HashDocument) {
                 whereClauses.push('HashDocument = ?');
                 params.push(filtru.HashDocument);
-            }
-            
-            if (filtru.StareBlockchain) {
-                whereClauses.push('StareBlockchain = ?');
-                params.push(filtru.StareBlockchain);
             }
             
             const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
@@ -424,20 +379,14 @@ export class JurnalCereriConfirmareRealService {
     /**
      * Șterge o cerere de confirmare
      */
-    async deleteCerere(idCerere: number): Promise<boolean> {
+    async deleteCerere(idCerere: string | number): Promise<boolean> {
         try {
             const db = await getDatabase();
-            
-            const query = `
-                DELETE FROM JurnalCereriConfirmare 
-                WHERE IdJurnal = ?
-            `;
-            
-            const result = await db.run(query, [idCerere]);
-            
-            console.log(`Cerere de confirmare ștearsă: ${idCerere}`);
+            const idStr = String(idCerere);
+            const query = `DELETE FROM JurnalCereriConfirmare WHERE IdJurnal = ?`;
+            const result = await db.run(query, [idStr]);
+            console.log(`Cerere de confirmare ștearsă: ${idStr}`);
             return result.changes ? result.changes > 0 : false;
-            
         } catch (error) {
             console.error('Eroare la ștergerea cererii de confirmare:', error);
             throw new Error(`Eroare la ștergerea cererii de confirmare: ${error instanceof Error ? error.message : 'Eroare necunoscută'}`);

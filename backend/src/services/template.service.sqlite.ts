@@ -203,26 +203,37 @@ export class EmailTemplateService {
 
             let processedContent = template.ContinutSablon;
 
-            // Înlocuire variabile standard
-            const replacements = {
-                '{NUME_PARTENER}': partnerData.nume || 'Nume necunoscut',
-                '{CUI_PARTENER}': partnerData.cui || 'CUI necunoscut',
-                '{EMAIL_PARTENER}': partnerData.email || 'Email necunoscut',
-                '{TELEFON_PARTENER}': partnerData.telefon || 'Telefon necunoscut',
-                '{ADRESA_PARTENER}': partnerData.adresa || 'Adresă necunoscută',
-                '{REPREZENTANT_PARTENER}': partnerData.reprezentant || 'Reprezentant necunoscut',
-                '{DATA_CURENTA}': new Date().toLocaleDateString('ro-RO'),
-                '{SOLD_CURENT}': partnerData.soldCurent || '0',
-                '{MONEDA}': partnerData.moneda || 'RON',
-                '{PERIOADA_CONFIRMARE}': partnerData.perioadaConfirmare || 'nedefinită'
+            // Helper pentru prima valoare definită / non goală
+            const pick = (...vals: any[]) => vals.find(v => v !== undefined && v !== null && String(v).trim() !== '') ?? '';
+
+            // Construim map generic de token -> valoare
+            const tokenValues: Record<string,string> = {
+                'NUME_PARTENER': pick(partnerData.numePartener, partnerData.nume, 'Nume necunoscut'),
+                'CUI_PARTENER': pick(partnerData.cuiPartener, partnerData.cui, 'CUI necunoscut'),
+                'EMAIL_PARTENER': pick(partnerData.emailPartener, partnerData.email, 'Email necunoscut'),
+                'TELEFON_PARTENER': pick(partnerData.telefonPartener, partnerData.telefon, 'Telefon necunoscut'),
+                'ADRESA_PARTENER': pick(partnerData.adresaPartener, partnerData.adresa, 'Adresă necunoscută'),
+                'REPREZENTANT_PARTENER': pick(partnerData.reprezentantPartener, partnerData.reprezentant, 'Reprezentant necunoscut'),
+                'DATA_CURENTA': pick(partnerData.dataActuala, new Date().toLocaleDateString('ro-RO')),
+                'SOLD_CURENT': pick(partnerData.soldCurent, '0'),
+                'MONEDA': pick(partnerData.moneda, 'RON'),
+                'PERIOADA_CONFIRMARE': pick(partnerData.perioadaConfirmare, partnerData.dataSold, partnerData.PERIOADA, ''),
+                // Aliasuri suplimentare folosite în șabloane existente
+                'PERIOADA': pick(partnerData.dataSold, partnerData.perioadaConfirmare, ''),
+                'NUME_COMPANIE': pick(partnerData.numeCompanie, process.env.NUME_COMPANIE, 'Compania Noastră'),
+                'DATA': pick(partnerData.dataActuala, new Date().toLocaleDateString('ro-RO'))
             };
 
-            // Aplică înlocuirile
-            for (const [placeholder, value] of Object.entries(replacements)) {
-                processedContent = processedContent.replace(
-                    new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
-                    String(value)
-                );
+            // Pentru fiecare token înlocuim atât {TOKEN} cât și [TOKEN]
+            for (const [token, value] of Object.entries(tokenValues)) {
+                const safeVal = String(value);
+                const patterns = [
+                    new RegExp('\\{' + token.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&') + '\\}', 'g'),
+                    new RegExp('\\[' + token.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&') + '\\]', 'g')
+                ];
+                patterns.forEach(rx => {
+                    processedContent = processedContent.replace(rx, safeVal);
+                });
             }
 
             return processedContent;
@@ -528,7 +539,7 @@ export class EmailTemplateController {
             console.error('❌ Eroare controller searchTemplates:', error);
             res.status(500).json({
                 success: false,
-                error: 'Eroare la căutarea șabloanelor'
+                error: 'Eroare la căutarea șablonelor'
             });
         }
     }

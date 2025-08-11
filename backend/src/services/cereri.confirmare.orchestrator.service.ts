@@ -9,12 +9,13 @@ import jurnalSesiuniService from './JurnalSesiuniService';
 import { emailService } from './email.service';
 import { pdfGenerationService } from './pdf.generation.service';
 import { templateManagerService } from './template.manager.service';
-import { advancedStorageService } from './advanced.storage.service';
+// import { advancedStorageService } from './advanced.storage.service'; // ❌ eliminat Azure
 import { EmailTemplateService } from './template.service';
 import { CreateJurnalDocumenteEmiseDto } from '../models/JurnalDocumenteEmise';
 import { CreateJurnalCereriConfirmareDto } from '../models/JurnalCereriConfirmare.Real';
 import { CreateJurnalSesiuniDto } from '../models/JurnalSesiuni';
 import { Partener } from '../models/Partener';
+import { folderSettingsService } from './folder.settings.service';
 
 /**
  * Interfață pentru datele necesare inițierii unei sesiuni de cereri
@@ -43,7 +44,8 @@ interface DocumentGenerat {
     tipPartener: string;
     numeDocument: string;
     caleFisier: string;
-    hashDocument: string;
+    hashDocument: string; // hash original PDF generat (nesemnat)
+    hashDocumentSemnat?: string; // ✅ nou: hash al PDF-ului semnat (nu suprascrie originalul)
     dimensiuneDocument: number;
     status?: 'reserved' | 'generated' | 'downloaded' | 'uploaded' | 'signed'; // Status în workflow
 }
@@ -245,7 +247,7 @@ export class CereriConfirmareOrchestratorService {
             const emailTemplate = templates.find(t => 
                 t.TipSablon === 'email' && 
                 t.CategorieSablon === categoryToSearch &&
-                t.Activ === true
+                !!t.Activ // Acceptă 1 / true
             );
             
             // ✅ FALLBACK FINAL: Dacă nu găsește template pentru categoria 'general', încearcă 'client' (ca default)
@@ -264,6 +266,18 @@ export class CereriConfirmareOrchestratorService {
             }
             
             console.log(`🔍 EMAIL: Template găsit: ${emailTemplate?.IdSablon || 'NONE'} (${emailTemplate?.NumeSablon || 'N/A'})`);
+
+            // ✅ NOU: Fallback generic – dacă încă nu avem template specific, folosim primul template email activ indiferent de categorie
+            if (!emailTemplate) {
+                const firstActiveAnyCategory = templates.find(t => t.TipSablon === 'email' && t.Activ === true);
+                if (firstActiveAnyCategory) {
+                    console.warn(`⚠️ FALLBACK GENERIC: Nu a fost găsit șablon pentru categoria '${categoryToSearch}'. Se folosește primul activ (${firstActiveAnyCategory.CategorieSablon} -> ${firstActiveAnyCategory.IdSablon})`);
+                    return firstActiveAnyCategory.IdSablon;
+                } else {
+                    console.error(`❌ NU EXISTĂ NICIUN ȘABLON EMAIL ACTIV ÎN TABEL. Se va continua fără trimitere email, dar cererea va fi salvată.`);
+                    return null; // Orchestrator va continua salvarea cererii fără email
+                }
+            }
 
             return emailTemplate?.IdSablon || null;
         } catch (error) {
@@ -300,14 +314,22 @@ export class CereriConfirmareOrchestratorService {
     }
 
     /**
-     * Generează numele documentului pentru un partener
+     * Generează numele documentului pentru un partener (format nou, mai lizibil)
      */
     private generateDocumentName(partener: Partener, dataSold: string, numarInregistrare: number): string {
-        const tipPartener = this.getTipPartener(partener);
-        const dataFormatata = dataSold.replace(/-/g, '_');
-        const numePartenerSanitized = partener.numePartener.replace(/[^a-zA-Z0-9]/g, '_');
-        
-        return `Cerere_Confirmare_Sold_${tipPartener}_${numePartenerSanitized}_${dataFormatata}_Nr${numarInregistrare}.pdf`;
+        // Format dorit: "CERERE DE CONFIRMARE DE SOLD Nr. {numarInregistrare} {DD.MM.YYYY} - {Nume Partener}.pdf"
+        // Păstrăm diacriticele, curățăm doar caracterele ilegale pentru Windows
+        const dateObj = new Date(dataSold);
+        const dd = String(dateObj.getDate()).padStart(2, '0');
+        const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const yyyy = dateObj.getFullYear();
+        const dataAfisare = `${dd}.${mm}.${yyyy}`;
+        const cleanedPartnerName = partener.numePartener
+            .replace(/[\\/:*?"<>|]/g, ' ') // caractere interzise
+            .replace(/\s+/g, ' ')
+            .trim();
+        const nume = `CERERE DE CONFIRMARE DE SOLD Nr. ${numarInregistrare} ${dataAfisare} - ${cleanedPartnerName}.pdf`;
+        return nume;
     }
 
     /**
@@ -450,52 +472,54 @@ export class CereriConfirmareOrchestratorService {
             console.log('📄 STEP 3: Începere generare documente pentru sesiunea:', idSesiune);
             console.log(`⚠️ IMPORTANT: Toate operațiunile rămân în memorie/fișiere locale - NU se salvează în BD încă!`);
             
-            // ✅ Folosim datele din memorie, nu din baza de date
             if (!sesiuneData) {
                 throw new Error(`Datele sesiunii sunt necesare pentru Step 3 - sesiunea trebuie să fie în memorie`);
             }
 
             console.log(`📋 Date sesiune din memorie: utilizator ${sesiuneData.numeUtilizator}, categoria: ${sesiuneData.partnerCategory}`);
+            console.log(`🧪 Documente rezervate primite: ${documenteReservate.length}`);
+            if (documenteReservate.length > 0) {
+                console.log('🔎 Primul document rezervat (debug):', documenteReservate[0]);
+            }
             
-            // 1. Pre-încarcă template-urile necesare pentru partenerii din sesiune
             const parteneriIds = documenteReservate.map(doc => doc.idPartener);
+            console.log('🆔 ID-uri parteneri pentru generare:', parteneriIds);
             const parteneri = await Promise.all(
                 parteneriIds.map(id => this.getPartenerById(id))
             );
             const parteneriValizi = parteneri.filter(p => p !== null) as Partener[];
+            console.log(`✅ Parteneri validați: ${parteneriValizi.length}`);
             
-            // Pre-încarcă template-urile o singură dată
             await templateManagerService.getTemplatesForPartners(parteneriValizi);
             console.log('📥 Template-uri pre-încărcate pentru sesiune');
             
             const documenteGenerate: DocumentGenerat[] = [];
+            const eroriGenerare: Array<{ idPartener: string; nume?: string; mesaj: string; stack?: string }> = [];
             
             for (const docRezerv of documenteReservate) {
                 try {
-                    // 2. Obține datele partenerului
+                    if (!docRezerv.idPartener) {
+                        console.warn('⚠️ Document rezervat fără idPartener:', docRezerv);
+                        eroriGenerare.push({ idPartener: 'UNKNOWN', mesaj: 'Lipsește idPartener în documentul rezervat' });
+                        continue;
+                    }
                     const partener = await this.getPartenerById(docRezerv.idPartener);
                     if (!partener) {
                         console.error(`❌ Partenerul cu ID ${docRezerv.idPartener} nu a fost găsit`);
+                        eroriGenerare.push({ idPartener: docRezerv.idPartener, mesaj: 'Partener inexistent' });
                         continue;
                     }
-
-                    // 3. Pregătește datele utilizatorului din sesiunea în memorie
                     const utilizatorData = {
                         nume: sesiuneData.numeUtilizator || 'Utilizator necunoscut',
                         email: sesiuneData.emailUtilizator || '',
                         rol: sesiuneData.rolUtilizator || 'Administrator',
                         functie: sesiuneData.rolUtilizator || 'Administrator'
                     };
-                    
-                    // 4. ✅ Template-ul se determină AUTOMAT pe baza categoriei selectate în Step 1
                     const templateName = this.determineTemplateFromCategory(
                         sesiuneData.partnerCategory,
                         partener
                     );
-                    
-                    console.log(`📄 Template automat selectat pentru ${partener.numePartener}: ${templateName} (categoria: ${sesiuneData.partnerCategory})`);
-                    
-                    // 5. Generează documentul PDF folosind serviciul optimizat
+                    console.log(`📄 [GEN] Partener=${partener.numePartener} (#${docRezerv.numarInregistrare}) template=${templateName}`);
                     const rezultatPDF = await pdfGenerationService.generateDocumentForPartner(
                         partener,
                         docRezerv.numarInregistrare,
@@ -506,31 +530,43 @@ export class CereriConfirmareOrchestratorService {
                         utilizatorData,
                         idSesiune
                     );
-                    
-                    // ⚠️ IMPORTANT: NU actualizăm JurnalDocumenteEmise încă - doar hash-ul local
                     console.log(`⚠️ Hash generat ${rezultatPDF.hashDocument} pentru ${partener.numePartener} - NU se salvează în BD încă!`);
-                    
-                    // 4. Actualizează documentul nostru cu informațiile finale
                     const documentActualizat: DocumentGenerat = {
                         ...docRezerv,
+                        numeDocument: rezultatPDF.numeDocument,
                         hashDocument: rezultatPDF.hashDocument,
                         dimensiuneDocument: rezultatPDF.dimensiuneDocument,
-                        caleFisier: rezultatPDF.caleFisier
+                        caleFisier: rezultatPDF.caleFisier,
+                        status: 'generated'
                     };
-                    
                     documenteGenerate.push(documentActualizat);
-                    
                     console.log(`✅ Document generat: ${rezultatPDF.numeDocument}`);
-                    
                 } catch (error) {
-                    console.error(`❌ Eroare la generarea documentului pentru ${docRezerv.numePartener}:`, error);
-                    // Continuă cu următorul document
+                    const msg = error instanceof Error ? error.message : String(error);
+                    const stack = error instanceof Error ? error.stack : undefined;
+                    console.error(`❌ Eroare la generarea documentului pentru rezervarea #${docRezerv.numarInregistrare} (partenerId=${docRezerv.idPartener}):`, error);
+                    eroriGenerare.push({ idPartener: docRezerv.idPartener || 'UNKNOWN', nume: docRezerv.numePartener, mesaj: msg, stack });
                 }
             }
             
             console.log(`✅ Generate ${documenteGenerate.length}/${documenteReservate.length} documente`);
+            if (documenteGenerate.length === 0) {
+                console.error('🚨 Niciun document generat. Detalii erori:');
+                eroriGenerare.forEach(e => {
+                    console.error(` - PartenerId=${e.idPartener} Nume=${e.nume || 'N/A'}: ${e.mesaj}`);
+                    if (e.stack) {
+                        console.error(e.stack.split('\n').slice(0,4).join('\n'));
+                    }
+                });
+                console.error('📦 Payload debug primului doc rezervat:', documenteReservate[0]);
+                console.error('🧪 sesiuneData trimisă:', {
+                    partnerCategory: sesiuneData.partnerCategory,
+                    dataSold: sesiuneData.dataSold,
+                    folderLocal: sesiuneData.folderLocal,
+                    parteneriSelectati: sesiuneData.parteneriSelectati?.length
+                });
+            }
             return documenteGenerate;
-            
         } catch (error) {
             console.error('❌ Eroare la generarea documentelor:', error);
             throw new Error(`Eroare la generarea documentelor: ${error instanceof Error ? error.message : 'Eroare necunoscută'}`);
@@ -566,10 +602,11 @@ export class CereriConfirmareOrchestratorService {
             }
             
             // Determină folderul cu documente semnate
-            // Prioritate: 1. Folderul de upload al sesiunii, 2. Folderul din parametru
+            // Prioritate nouă: 1. Parametru explicit 2. Setare din DB (SetariFoldere.cereriSemnatePath + idSesiune) 3. Fallback uploads
+            const settings = await folderSettingsService.getFolderSettings();
+            const folderFromSettings = settings?.cereriSemnatePath ? path.join(settings.cereriSemnatePath, idSesiune) : undefined;
             const folderUpload = path.join(process.cwd(), 'uploads', 'signed-documents', idSesiune);
-            const folderFinal = folderDocumenteSemnate || folderUpload;
-            
+            const folderFinal = folderDocumenteSemnate || folderFromSettings || folderUpload;
             console.log(`📁 Căutare documente semnate în: ${folderFinal}`);
             
             // Verifică dacă folderul există
@@ -669,40 +706,23 @@ export class CereriConfirmareOrchestratorService {
                     
                     if (fisierSemnatGasit) {
                         const caleFisierSemnat = path.join(folderFinal, fisierSemnatGasit);
-                        
                         console.log(`✅ Fișier găsit pentru ${docGenerat.numePartener}: ${fisierSemnatGasit}`);
-                        
-                        // Upload în Azure Blob Storage cu organizare ierarhică
-                        const uploadResult = await advancedStorageService.uploadDocument(
-                            caleFisierSemnat,
-                            idSesiune,
-                            'semnate',
-                            'confirmarisolduri',
-                            {
-                                partener: docGenerat.numePartener,
-                                idPartener: docGenerat.idPartener,
-                                numarInregistrare: docGenerat.numarInregistrare.toString(),
-                                tipPartener: docGenerat.tipPartener,
-                                originalDocument: docGenerat.numeDocument,
-                                fisierSemnat: fisierSemnatGasit
-                            }
-                        );
-                        
-                        // Actualizează documentul cu informațiile de upload
-                        docGenerat.caleFisier = uploadResult.url; // URL-ul din blob storage
-                        docGenerat.hashDocument = uploadResult.contentMD5; // Folosește MD5 din storage
-                        docGenerat.dimensiuneDocument = uploadResult.size;
-                        
-                        console.log(`✅ Document semnat procesat și încărcat: ${docGenerat.numePartener} → ${uploadResult.url}`);
+                        // ✅ Păstrăm hashDocument (original) și calculăm separat hashSemnat
+                        try {
+                            const fileBuffer = await fs.readFile(caleFisierSemnat);
+                            const hashSemnat = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+                            docGenerat.hashDocumentSemnat = hashSemnat; // NU mai suprascriem hashDocument
+                            docGenerat.dimensiuneDocument = fileBuffer.length; // ultima dimensiune (semnat)
+                            docGenerat.caleFisier = caleFisierSemnat; // cale către fișierul semnat local
+                            console.log(`🔐 Hash original: ${docGenerat.hashDocument}`);
+                            console.log(`🔐 Hash semnat:   ${docGenerat.hashDocumentSemnat}`);
+                        } catch (hErr) {
+                            console.error('Eroare calcul hash fișier semnat:', hErr);
+                        }
                         documenteProcesate.push(docGenerat);
-                        
                     } else {
                         console.warn(`⚠️ Nu s-a găsit document semnat pentru: ${docGenerat.numePartener}`);
-                        console.warn(`   📄 Document căutat: ${docGenerat.numeDocument}`);
-                        console.warn(`   🔍 Fișiere disponibile: ${fisiereSemnate.join(', ')}`);
-                        console.warn(`   💡 SUGESTIE: Verificați că fișierul semnat conține numele partenerului sau numărul documentului`);
                     }
-                    
                 } catch (error) {
                     console.error(`❌ Eroare la procesarea documentului semnat pentru ${docGenerat.numePartener}:`, error);
                 }
@@ -761,16 +781,7 @@ export class CereriConfirmareOrchestratorService {
                         continue;
                     }
                     
-                    // 2. Generează hash-ul cererii pentru blockchain
-                    const cerereData = {
-                        numarInregistrare: doc.numarInregistrare,
-                        idPartener: doc.idPartener,
-                        dataSold: sesiuneData.dataSold,
-                        timestamp: Date.now()
-                    };
-                    const hashCerere = crypto.createHash('sha256').update(JSON.stringify(cerereData)).digest('hex');
-                    
-                    // 3. Creează înregistrarea completă în jurnalul cererilor (pentru blockchain)
+                    // 2. Creează înregistrarea completă în jurnalul cererilor (pentru blockchain)
                     const emailTemplate = await this.determineEmailTemplateFromCategory(
                         sesiuneData.partnerCategory,
                         partener
@@ -782,20 +793,17 @@ export class CereriConfirmareOrchestratorService {
                         NumeFisier: doc.numeDocument,
                         URLFisier: doc.caleFisier,
                         Stare: 'in_asteptare',
-                        LotId: idSesiune, // Folosim ID-ul sesiunii ca lot ID
+                        LotId: idSesiune,
                         CreatDe: sesiuneData.idUtilizator,
                         TrimisDe: sesiuneData.idUtilizator,
                         DataTrimitere: new Date().toISOString(),
-                        Observatii: `Cerere trimisă automat în sesiunea ${idSesiune} pentru ${doc.numePartener} - Template email: ${emailTemplate}`,
-                        HashDocument: doc.hashDocument,
-                        StareBlockchain: 'pending',
-                        TimestampBlockchain: Date.now(),
-                        ReteaBlockchain: 'MultiversX'
+                        Observatii: `Cerere trimisă automat în sesiunea ${idSesiune} pentru ${doc.numePartener}`,
+                        HashDocument: doc.hashDocument
                     };
                     
                     const cerereCreata = await jurnalCereriConfirmareRealService.createCerereConfirmare(cerereDto);
                     
-                    // 4. Trimite email-ul cu documentul atașat
+                    // 3. Trimite email-ul cu documentul atașat
                     if (partener.emailPartener) {
                         try {
                             // Determină template-ul pe baza categoriei partenerului
@@ -816,11 +824,16 @@ export class CereriConfirmareOrchestratorService {
                                 try {
                                     const processedTemplate = await this.emailTemplateService.processTemplate(templateId, {
                                         numePartener: partener.numePartener,
+                                        nume: partener.numePartener,
                                         cuiPartener: partener.cuiPartener,
+                                        cui: partener.cuiPartener,
                                         dataSold: sesiuneData.dataSold,
+                                        perioadaConfirmare: sesiuneData.dataSold,
                                         numeUtilizator: sesiuneData.numeUtilizator,
                                         dataActuala: new Date().toLocaleDateString('ro-RO'),
-                                        reprezentantPartener: partener.reprezentantPartener
+                                        reprezentantPartener: partener.reprezentantPartener,
+                                        reprezentant: partener.reprezentantPartener,
+                                        numeCompanie: process.env.NUME_COMPANIE || 'Compania Noastră'
                                     });
                                     
                                     if (processedTemplate) {
@@ -836,29 +849,21 @@ export class CereriConfirmareOrchestratorService {
                             // Calculare hash pentru fișierul PDF SEMNAT de utilizator (încărcat în Step 4)
                             let pdfHashSemnaturizat = '';
                             let statusSemnaturăDigitală = 'UNKNOWN';
-                            
                             try {
-                                // doc.caleFisier acum pointează către fișierul semnat încărcat de utilizator
                                 const pdfBufferSemnaturizat = fsSync.readFileSync(doc.caleFisier);
                                 pdfHashSemnaturizat = crypto.createHash('sha256').update(pdfBufferSemnaturizat).digest('hex');
-                                
-                                // VALIDARE CRITICĂ: Verifică dacă fișierul a fost într-adevăr semnat digital
+                                // Dacă avem deja hashDocumentSemnat din Step 3, îl folosim pentru consistență
+                                if (doc.hashDocumentSemnat && doc.hashDocumentSemnat !== pdfHashSemnaturizat) {
+                                    console.warn(`⚠️ Hash semnat recalculat diferit față de cel din Step 3 pentru ${doc.numeDocument}`);
+                                }
+                                // Comparăm hash original (generat) cu hash semnat (recalculat acum)
                                 if (pdfHashSemnaturizat === doc.hashDocument) {
                                     statusSemnaturăDigitală = 'NESEMNAT_DETECTAT';
-                                    console.log(`🚨 ALERTĂ SECURITATE: Fișierul ${doc.numeDocument} pare NESEMNAT (hash identic cu originalul)!`);
-                                    console.log(`⚠️ Hash original: ${doc.hashDocument}`);
-                                    console.log(`⚠️ Hash încărcat: ${pdfHashSemnaturizat}`);
                                 } else {
                                     statusSemnaturăDigitală = 'SEMNAT_VALID';
-                                    console.log(`✅ VALIDARE: Fișierul ${doc.numeDocument} pare semnat digital (hash diferit)`);
                                 }
-                                
-                                console.log(`📊 Hash calculat pentru PDF semnaturizat de utilizator ${doc.numeDocument}: ${pdfHashSemnaturizat}`);
-                                console.log(`🔐 AUDIT: Hash PDF original (în JurnalDocumenteEmise): ${doc.hashDocument}`);
-                                console.log(`🔐 AUDIT: Hash PDF semnaturizat (în JurnalEmail): ${pdfHashSemnaturizat}`);
-                                console.log(`🔐 AUDIT: Status semnătură digitală: ${statusSemnaturăDigitală}`);
                             } catch (error) {
-                                console.error(`❌ Eroare la calcularea hash-ului pentru PDF semnaturizat ${doc.numeDocument}:`, error);
+                                console.error(`❌ Eroare la calcularea hash-ului pentru PDF semnat ${doc.numeDocument}:`, error);
                                 pdfHashSemnaturizat = 'error_calculating_hash';
                                 statusSemnaturăDigitală = 'ERROR_VALIDATION';
                             }
@@ -947,7 +952,7 @@ export class CereriConfirmareOrchestratorService {
                                 await jurnalCereriConfirmareRealService.updateCerereConfirmare(cerereCreata.IdJurnal, {
                                     Stare: 'trimisa',
                                     DataTrimitere: new Date().toISOString(),
-                                    Observatii: `Email trimis cu succes către ${partener.emailPartener} - MessageID: ${emailResult.messageId}`
+                                    Observatii: `Email trimis cu succes către ${partener.emailPartener}`
                                 });
                             } else {
                                 await jurnalCereriConfirmareRealService.updateCerereConfirmare(cerereCreata.IdJurnal, {
@@ -1123,11 +1128,6 @@ export class CereriConfirmareOrchestratorService {
         const diferente: string[] = [];
         
         // Verifică diferența între originalul generat și cel semnaturizat de utilizator
-        if (hashOriginal === hashSemnaturizat) {
-            diferente.push('⚠️ ATENȚIE: Hash PDF original = Hash PDF semnaturizat (utilizatorul nu a semnat documentul cu certificat digital)');
-        } else {
-            console.log('✅ Hash PDF original ≠ Hash PDF semnaturizat (utilizatorul a semnat corect cu certificat digital)');
-        }
         
         // Verifică diferența față de documentul returnat de partener (dacă există)
         if (hashPartenerReturnat) {

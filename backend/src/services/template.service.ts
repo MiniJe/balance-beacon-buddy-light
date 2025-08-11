@@ -201,31 +201,31 @@ export class EmailTemplateService {
             if (!template) {
                 throw new Error(`Șablonul ${idSablon} nu a fost găsit`);
             }
-
             let processedContent = template.ContinutSablon;
-
-            // Înlocuire variabile standard
-            const replacements = {
-                '{NUME_PARTENER}': partnerData.nume || 'Nume necunoscut',
-                '{CUI_PARTENER}': partnerData.cui || 'CUI necunoscut',
-                '{EMAIL_PARTENER}': partnerData.email || 'Email necunoscut',
-                '{TELEFON_PARTENER}': partnerData.telefon || 'Telefon necunoscut',
-                '{ADRESA_PARTENER}': partnerData.adresa || 'Adresă necunoscută',
-                '{REPREZENTANT_PARTENER}': partnerData.reprezentant || 'Reprezentant necunoscut',
-                '{DATA_CURENTA}': new Date().toLocaleDateString('ro-RO'),
-                '{SOLD_CURENT}': partnerData.soldCurent || '0',
-                '{MONEDA}': partnerData.moneda || 'RON',
-                '{PERIOADA_CONFIRMARE}': partnerData.perioadaConfirmare || 'nedefinită'
+            const pick = (...vals: any[]) => vals.find(v => v !== undefined && v !== null && String(v).trim() !== '') ?? '';
+            const tokenValues: Record<string,string> = {
+                'NUME_PARTENER': pick(partnerData.numePartener, partnerData.nume, 'Nume necunoscut'),
+                'CUI_PARTENER': pick(partnerData.cuiPartener, partnerData.cui, 'CUI necunoscut'),
+                'EMAIL_PARTENER': pick(partnerData.emailPartener, partnerData.email, ''),
+                'TELEFON_PARTENER': pick(partnerData.telefonPartener, partnerData.telefon, ''),
+                'ADRESA_PARTENER': pick(partnerData.adresaPartener, partnerData.adresa, ''),
+                'REPREZENTANT_PARTENER': pick(partnerData.reprezentantPartener, partnerData.reprezentant, ''),
+                'DATA_CURENTA': pick(partnerData.dataActuala, new Date().toLocaleDateString('ro-RO')),
+                'SOLD_CURENT': pick(partnerData.soldCurent, '0'),
+                'MONEDA': pick(partnerData.moneda, 'RON'),
+                'PERIOADA_CONFIRMARE': pick(partnerData.perioadaConfirmare, partnerData.dataSold, partnerData.PERIOADA, ''),
+                'PERIOADA': pick(partnerData.dataSold, partnerData.perioadaConfirmare, ''),
+                'NUME_COMPANIE': pick(partnerData.numeCompanie, process.env.NUME_COMPANIE, 'Compania Noastră'),
+                'DATA': pick(partnerData.dataActuala, new Date().toLocaleDateString('ro-RO'))
             };
-
-            // Aplică înlocuirile
-            for (const [placeholder, value] of Object.entries(replacements)) {
-                processedContent = processedContent.replace(
-                    new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
-                    String(value)
-                );
+            for (const [token, value] of Object.entries(tokenValues)) {
+                const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const patterns = [
+                    new RegExp('\\{' + escaped + '\\}', 'g'),
+                    new RegExp('\\[' + escaped + '\\]', 'g')
+                ];
+                patterns.forEach(rx => processedContent = processedContent.replace(rx, String(value)));
             }
-
             return processedContent;
         } catch (error) {
             console.error('❌ Eroare la procesarea șablonului:', error);
@@ -499,7 +499,7 @@ export class EmailTemplateController {
             console.error('❌ Eroare controller getTemplatesByCategory:', error);
             res.status(500).json({
                 success: false,
-                error: 'Eroare la obținerea șabloanelor după categorie'
+                error: 'Eroare la obținerea șablonelor după categorie'
             });
         }
     }
@@ -529,7 +529,7 @@ export class EmailTemplateController {
             console.error('❌ Eroare controller searchTemplates:', error);
             res.status(500).json({
                 success: false,
-                error: 'Eroare la căutarea șabloanelor'
+                error: 'Eroare la căutarea șablonelor'
             });
         }
     }
