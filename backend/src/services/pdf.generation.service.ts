@@ -234,13 +234,13 @@ export class PDFGenerationService {
     ): Promise<any> {
         return new Promise((resolve, reject) => {
             const child = spawn(pythonCommand, args, {
-                stdio: ['pipe', 'pipe', 'pipe']
+                stdio: ['pipe', 'pipe', 'pipe'],
+                env: { ...process.env, PYTHONIOENCODING: 'utf-8', LC_ALL: 'C.UTF-8', LANG: 'en_US.UTF-8' }
             });
 
             let stdout = '';
             let stderr = '';
 
-            // Colectează output-ul
             child.stdout.on('data', (data) => {
                 stdout += data.toString();
             });
@@ -249,30 +249,51 @@ export class PDFGenerationService {
                 stderr += data.toString();
             });
 
-            child.on('close', (code) => {
-                if (code !== 0) {
-                    reject(new Error(`Scriptul Python avansat a eșuat cu codul ${code}: ${stderr}`));
-                    return;
+            const finalize = (code?: number | null) => {
+                if (stderr.trim()) {
+                    console.warn(`⚠️ Python STDERR (${code}):`, stderr);
+                }
+                // Încercăm să extragem eventual JSON chiar dacă exit code != 0
+                let jsonMatch: any = null;
+                try {
+                    // Dacă scriptul printează progres (tqdm), JSON-ul este de obicei ultima linie validă
+                    const lines = stdout.split(/\r?\n/).filter(l => l.trim());
+                    const lastLine = lines[lines.length - 1];
+                    if (lastLine && lastLine.trim().startsWith('{') && lastLine.trim().endsWith('}')) {
+                        jsonMatch = JSON.parse(lastLine.trim());
+                    } else {
+                        // fallback: încearcă întreg stdout
+                        jsonMatch = JSON.parse(stdout);
+                    }
+                } catch (e) {
+                    // ignorăm, vom trata mai jos
                 }
 
-                if (stderr && stderr.trim()) {
-                    console.warn(`⚠️ Python stderr: ${stderr}`);
+                if (code !== 0) {
+                    if (jsonMatch) {
+                        console.log('⚠️ Script Python a returnat cod !=0 dar JSON valid a fost detectat – continuăm.');
+                        return resolve(jsonMatch);
+                    }
+                    return reject(new Error(`Scriptul Python avansat a eșuat cu codul ${code}: ${stderr}`));
                 }
+
+                if (jsonMatch) return resolve(jsonMatch);
 
                 try {
                     const result = JSON.parse(stdout);
-                    resolve(result);
+                    return resolve(result);
                 } catch (parseError) {
                     console.error('❌ Nu s-a putut parsa rezultatul Python avansat:', stdout);
-                    reject(new Error(`Rezultat invalid de la scriptul Python avansat: ${parseError}`));
+                    return reject(new Error(`Rezultat invalid de la scriptul Python avansat: ${parseError}`));
                 }
-            });
+            };
 
+            child.on('close', finalize);
+            child.on('exit', finalize);
             child.on('error', (error) => {
                 reject(new Error(`Eroare la executarea scriptului Python avansat: ${error.message}`));
             });
 
-            // Timeout după 60 secunde (mai mult timp pentru procesare avansată)
             const timeout = setTimeout(() => {
                 child.kill();
                 reject(new Error('Timeout la executarea scriptului Python avansat (60s)'));

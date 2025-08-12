@@ -33,7 +33,4 @@ router.get('/statistici', sesiuniController.getStatistici.bind(sesiuniController
 // Închide sesiunile expirate (operație administrativă)
 router.post('/close-expired', sesiuniController.closeExpiredSessions.bind(sesiuniController));
 
-// Actualizează statusul blockchain pentru o sesiune
-router.put('/:idSesiune/blockchain', sesiuniController.updateBlockchainStatus.bind(sesiuniController));
-
 export default router;

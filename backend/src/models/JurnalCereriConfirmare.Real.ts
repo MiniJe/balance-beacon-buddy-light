@@ -1,6 +1,6 @@
 /**
  * Model pentru tabelul JurnalCereriConfirmare
- * Structura reală din baza de date - actualizată conform schema existentă
+ * Varianta LIGHT: câmpurile blockchain eliminate.
  */
 
 export interface JurnalCereriConfirmare {
@@ -19,10 +19,10 @@ export interface JurnalCereriConfirmare {
     DataIncarcareSemnatura?: string | null; // DATETIME - data încărcării semnăturii
     Observatii?: string | null; // NVARCHAR - observații
     HashDocument?: string | null; // NVARCHAR - hash-ul documentului
-    HashTranzactieBlockchain?: string | null; // NVARCHAR - hash tranzacție blockchain
-    StareBlockchain?: string | null; // NVARCHAR - starea blockchain
-    TimestampBlockchain?: number | null; // BIGINT - timestamp blockchain
-    ReteaBlockchain?: string | null; // NVARCHAR - rețeaua blockchain folosită
+    // HashTranzactieBlockchain?: string | null; // NVARCHAR - hash tranzacție blockchain
+    // StareBlockchain?: string | null; // NVARCHAR - starea blockchain
+    // TimestampBlockchain?: number | null; // BIGINT - timestamp blockchain
+    // ReteaBlockchain?: string | null; // NVARCHAR - rețeaua blockchain folosită
 }
 
 /**
@@ -43,10 +43,7 @@ export interface CreateJurnalCereriConfirmareDto {
     DataIncarcareSemnatura?: string; // DATETIME - data încărcării semnăturii
     Observatii?: string; // NVARCHAR - observații
     HashDocument?: string; // NVARCHAR - hash document
-    HashTranzactieBlockchain?: string; // NVARCHAR - hash blockchain
-    StareBlockchain?: string; // NVARCHAR - stare blockchain
-    TimestampBlockchain?: number; // BIGINT - timestamp blockchain
-    ReteaBlockchain?: string; // NVARCHAR - rețea blockchain
+    // (blockchain fields removed)
 }
 
 /**
@@ -60,10 +57,7 @@ export interface UpdateJurnalCereriConfirmareDto {
     DataIncarcareSemnatura?: string; // DATETIME - data încărcării semnăturii
     Observatii?: string; // NVARCHAR - observații
     HashDocument?: string; // NVARCHAR - hash document
-    HashTranzactieBlockchain?: string; // NVARCHAR - hash blockchain
-    StareBlockchain?: string; // NVARCHAR - stare blockchain
-    TimestampBlockchain?: number; // BIGINT - timestamp blockchain
-    ReteaBlockchain?: string; // NVARCHAR - rețea blockchain
+    // (blockchain fields removed)
 }
 
 /**
@@ -103,5 +97,5 @@ export interface FilterJurnalCereriConfirmareDto {
     dataInceput?: string;
     dataSfarsit?: string;
     HashDocument?: string;
-    StareBlockchain?: string;
+    // StareBlockchain?: string; // removed
 }

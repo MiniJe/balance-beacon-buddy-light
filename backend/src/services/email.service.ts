@@ -300,10 +300,10 @@ export class EmailService {
         status: 'SUCCESS' | 'FAILED';
         error?: string;
         partnerId?: string;  // Modificat de la number la string pentru UNIQUEIDENTIFIER
-        templateId?: string;         // Modificat de la number la string pentru UNIQUEIDENTIFIER
+        templateId?: string;         // Modificat de la number la string pentru UNIQUEIDENTIFICATOR
         content?: string;
         emailType?: string;
-        batchId?: string;    // Modificat de la number la string pentru UNIQUEIDENTIFIER
+        batchId?: string;    // Modificat de la number la string pentru UNIQUEIDENTIFICATOR
         createdBy?: string;
         senderName?: string;
         senderEmail?: string;
@@ -320,8 +320,30 @@ export class EmailService {
         attachmentHash?: string;    // Hash-ul fișierului PDF atașat
         digitalSignatureStatus?: string; // Status validare semnătură digitală (SEMNAT_VALID / NESEMNAT_DETECTAT / ERROR_VALIDATION)
         originalDocumentHash?: string;   // Hash-ul documentului original pentru comparație
+        // ✅ Nou: meta-informații despre procesarea șablonului (variabile, status)
+        templateMeta?: any;
     }): Promise<void> {
         try {
+            // Construcție payload Atasamente (poate conține și meta despre șablon)
+            let attachmentsPayload: string | undefined = undefined;
+            try {
+                const payloadObj: any = {};
+                if (logData.attachmentHash) {
+                    payloadObj.hash = logData.attachmentHash;
+                    payloadObj.digitalSignatureStatus = logData.digitalSignatureStatus || 'UNKNOWN';
+                    payloadObj.originalDocumentHash = logData.originalDocumentHash || null;
+                    payloadObj.validationTimestamp = new Date().toISOString();
+                }
+                if (logData.templateMeta) {
+                    payloadObj.templateMeta = logData.templateMeta;
+                }
+                if (Object.keys(payloadObj).length > 0) {
+                    attachmentsPayload = JSON.stringify(payloadObj);
+                }
+            } catch (jsonErr) {
+                console.error('❌ Eroare la serializarea meta/atașamente:', jsonErr);
+            }
+
             const jurnalEmailData: CreateJurnalEmailRequest = {
                 EmailDestinatar: logData.to,
                 SubiectEmail: logData.subject,
@@ -348,12 +370,7 @@ export class EmailService {
                 EmailCC: logData.cc,
                 EmailBCC: logData.bcc,
                 EmailReplyTo: logData.replyTo,
-                Atașamente: logData.attachmentHash ? JSON.stringify({
-                    hash: logData.attachmentHash,
-                    digitalSignatureStatus: logData.digitalSignatureStatus || 'UNKNOWN',
-                    originalDocumentHash: logData.originalDocumentHash || null,
-                    validationTimestamp: new Date().toISOString()
-                }) : undefined,  // Informații complete despre fișierul PDF atașat
+                Atașamente: attachmentsPayload,  // JSON cu hash + meta șablon dacă există
                 
                 // Configurare încercări
                 MaximIncercari: 3
@@ -459,6 +476,7 @@ export class EmailService {
             attachmentHash?: string;    // Hash-ul fișierului PDF atașat
             digitalSignatureStatus?: string; // Status validare semnătură digitală (SEMNAT_VALID / NESEMNAT_DETECTAT / ERROR_VALIDATION)
             originalDocumentHash?: string;   // Hash-ul documentului original pentru comparație
+            templateMeta?: any;              // ✅ meta info șablon
         }
     ): Promise<{ success: boolean; messageId?: string; error?: string }> {
         try {
@@ -504,7 +522,9 @@ export class EmailService {
                 templateId: logData?.templateId,        // ID-ul șablonului de email
                 attachmentHash: logData?.attachmentHash,  // Hash-ul fișierului PDF
                 digitalSignatureStatus: logData?.digitalSignatureStatus, // Status validare semnătură
-                originalDocumentHash: logData?.originalDocumentHash      // Hash original pentru comparație
+                originalDocumentHash: logData?.originalDocumentHash,      // Hash original pentru comparație
+                // ✅ Salvăm și conținutul final al emailului pentru audit
+                content: emailData.html
             });
             
             console.log('✅ Email cu atașament trimis cu succes:', info.messageId);
@@ -533,7 +553,9 @@ export class EmailService {
                 templateId: logData?.templateId,        // ID-ul șablonului de email
                 attachmentHash: logData?.attachmentHash,  // Hash-ul fișierului PDF
                 digitalSignatureStatus: logData?.digitalSignatureStatus, // Status validare semnătură
-                originalDocumentHash: logData?.originalDocumentHash      // Hash original pentru comparație
+                originalDocumentHash: logData?.originalDocumentHash,      // Hash original pentru comparație
+                // ✅ Dacă avem HTML, îl salvăm pentru audit chiar și pe eșec
+                content: emailData.html
             });
             
             return { 

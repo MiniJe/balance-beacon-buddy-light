@@ -48,15 +48,8 @@ export interface JurnalEmail {
     TipRaspuns?: 'CONFIRMED' | 'DISPUTED' | 'CORRECTIONS' | 'GENERAL_RESPONSE';
     StatusRaspuns?: 'PENDING' | 'RECEIVED' | 'PROCESSED';
     
-    // Blockchain și securitate
+    // Securitate (hash integritate email)
     HashEmail?: string;
-    HashTranzactieBlockchain?: string;
-    StareBlockchain?: 'PENDING' | 'CONFIRMED' | 'FAILED';
-    TimestampBlockchain?: Date;
-    ReteaBlockchain?: string;
-    AdresaContractBlockchain?: string;
-    GazUtilizat?: number;
-    CostTranzactie?: number;
     
     // Audit și tracking
     CreatLa: Date;
@@ -122,15 +115,8 @@ export interface UpdateJurnalEmailRequest {
     DataRaspuns?: Date;
     RaspunsEmail?: string;
     
-    // Blockchain
+    // Hash integritate
     HashEmail?: string;
-    HashTranzactieBlockchain?: string;
-    StareBlockchain?: JurnalEmail['StareBlockchain'];
-    TimestampBlockchain?: Date;
-    ReteaBlockchain?: string;
-    AdresaContractBlockchain?: string;
-    GazUtilizat?: number;
-    CostTranzactie?: number;
     
     // Audit
     ModificatDe: string;
@@ -154,10 +140,6 @@ export interface JurnalEmailFilters {
     EmailDestinatar?: string;
     TipDestinatar?: JurnalEmail['TipDestinatar'][];
     
-    // Filtrare blockchain
-    StareBlockchain?: JurnalEmail['StareBlockchain'][];
-    ReteaBlockchain?: string;
-    
     // Filtrare după prioritate
     PriorityLevel?: JurnalEmail['PriorityLevel'][];
     
@@ -176,11 +158,6 @@ export interface JurnalEmailStats {
     emailuriEsuate: number;
     emailuriPending: number;
     emailuriRetry: number;
-    
-    // Statistici blockchain
-    emailuriBlockchainConfirmate: number;
-    emailuriBlockchainPending: number;
-    emailuriBlockchainEsuate: number;
     
     // Statistici pe tipuri
     statisticiTipEmail: {

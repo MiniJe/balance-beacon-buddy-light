@@ -323,39 +323,25 @@ export class JurnalDocumenteEmiseCleanService {
      */
     async generateConsecutiveOrderNumbers(count: number, tipDocument: string = 'FISE_PARTENER'): Promise<{ startNumber: number; endNumber: number; }> {
         try {
-            const request = pool.request();
-            
-            // Obține ultimul IdDocumente folosit pentru tipul de document specificat
-            const query = `
-                DECLARE @LastId INT;
-                
-                -- Obține ultimul ID folosit
-                SELECT @LastId = ISNULL(MAX(IdDocumente), 0) 
-                FROM JurnalDocumenteEmise;
-                
-                -- Returnează următorul număr disponibil
-                SELECT (@LastId + 1) as StartNumber, (@LastId + @Count) as EndNumber;
-            `;
-            
-            const result = await request
-                .input('Count', sql.Int, count)
-                .query(query);
-            
-            if (result.recordset.length === 0) {
-                throw new Error('Nu s-au putut genera numere de ordine');
+            if (count <= 0) throw new Error('count trebuie > 0');
+            const db = await getDatabase();
+            // În SQLite folosim o tranzacție pentru a evita condiții de cursă la alocare
+            await db.exec('BEGIN IMMEDIATE TRANSACTION');
+            try {
+                const row = await db.get(`SELECT COALESCE(MAX(IdDocumente), 0) as lastId FROM JurnalDocumenteEmise`);
+                const lastId = row?.lastId || 0;
+                const startNumber = lastId + 1;
+                const endNumber = lastId + count;
+                // Nu inserăm placeholdere acum (rezervare logică). Dacă se dorește rezervare strictă, trebuie inserate rânduri stub.
+                await db.exec('COMMIT');
+                console.log(`📋 (SQLite) Generat interval numere ordine: ${startNumber} - ${endNumber} pentru tipul ${tipDocument}`);
+                return { startNumber, endNumber };
+            } catch (inner) {
+                await db.exec('ROLLBACK');
+                throw inner;
             }
-            
-            const { StartNumber, EndNumber } = result.recordset[0];
-            
-            console.log(`📋 Generat interval numere ordine: ${StartNumber} - ${EndNumber} pentru tipul ${tipDocument}`);
-            
-            return {
-                startNumber: StartNumber,
-                endNumber: EndNumber
-            };
-            
         } catch (error) {
-            console.error('Eroare la generarea numerelor de ordine:', error);
+            console.error('Eroare la generarea numerelor de ordine (SQLite):', error);
             throw new Error(`Eroare la generarea numerelor de ordine: ${error instanceof Error ? error.message : 'Eroare necunoscută'}`);
         }
     }

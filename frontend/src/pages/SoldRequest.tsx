@@ -29,7 +29,12 @@ export const SoldRequest: React.FC = () => {
     canProceedToStep3,
     orderNumbers,
     resetAll,
-    togglePartnerSelection
+    togglePartnerSelection,
+    // adăugate
+    selectAllPartners,
+    deselectAllPartners,
+    selectByCategory,
+    getUserInfo
   } = useSoldSettings();
 
   if (loading) {
@@ -72,6 +77,9 @@ export const SoldRequest: React.FC = () => {
             partners={partners}
             onPartnerToggle={togglePartnerSelection}
             selectedCount={selectedPartnersCount}
+            onSelectAll={selectAllPartners}
+            onDeselectAll={deselectAllPartners}
+            onSelectByCategory={selectByCategory}
           />
         );
       case 2:
@@ -94,6 +102,7 @@ export const SoldRequest: React.FC = () => {
             orderNumbers={orderNumbers}
             onSendEmails={handleSendEmails}
             processing={processing}
+            userInfo={getUserInfo()}
           />
         );
       default:
@@ -196,7 +205,7 @@ export const SoldRequest: React.FC = () => {
               {step === 3 && (
                 <Button
                   onClick={handleSendEmails}
-                  disabled={processing}
+                  disabled={processing || partners.filter((p: any) => p.selected).length === 0}
                   className="min-w-[120px] bg-green-600 hover:bg-green-700"
                 >
                   {processing ? "Se trimite..." : "Trimite Solicitări"}

@@ -43,14 +43,27 @@ export const Step1SelectPartners: React.FC<Step1SelectPartnersProps> = ({
 
   // Filtrăm partenerii pe baza termenului de căutare și categoriei
   const filteredPartners = partners.filter((partner) => {
-    const matchesSearch = 
-      partner.numePartener.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      partner.cuiPartener.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (partner.emailPartener && partner.emailPartener.toLowerCase().includes(searchTerm.toLowerCase()));
+    const term = searchTerm.trim().toLowerCase();
+    const nume = (partner.numePartener || '').toLowerCase();
+    const cui = (partner.cuiPartener || '').toLowerCase();
+    const email = (partner.emailPartener || '').toLowerCase();
 
-    const matchesCategory = 
-      categoryFilter === "all" || 
-      partner.partnerCategory === categoryFilter;
+    const matchesSearch = term.length === 0 ||
+      nume.includes(term) ||
+      cui.includes(term) ||
+      email.includes(term);
+
+    // Derivăm categoria efectivă (fallback dacă partner.partnerCategory nu este populat / diferă ca naming)
+    const derivedCategory = partner.partnerCategory || (
+      partner.clientDUC ? 'client_duc' :
+      partner.clientDL ? 'client_dl' :
+      partner.furnizorDUC ? 'furnizor_duc' :
+      partner.furnizorDL ? 'furnizor_dl' : 'other'
+    );
+
+    const matchesCategory =
+      categoryFilter === 'all' ||
+      derivedCategory === categoryFilter;
 
     return matchesSearch && matchesCategory;
   });
@@ -87,25 +100,26 @@ export const Step1SelectPartners: React.FC<Step1SelectPartnersProps> = ({
           <CardTitle className="text-sm font-medium">Acțiuni Rapide</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Butoane de selecție */}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onSelectAll}
-              className="text-xs"
-            >
-              <CheckCircle2 className="h-3 w-3 mr-1" />
-              Selectează Toți
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onDeselectAll}
-              className="text-xs"
-            >
-              Deselectează Toți
-            </Button>
+          {/* Control select all (în locul butoanelor separate) */}
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="selectAllSold"
+              checked={filteredPartners.length > 0 && filteredPartners.every(p => p.selected)}
+              onCheckedChange={(checked) => {
+                if (checked === true) {
+                  onSelectAll?.();
+                } else if (checked === false) {
+                  onDeselectAll?.();
+                }
+              }}
+              disabled={filteredPartners.length === 0}
+            />
+            <label htmlFor="selectAllSold" className="text-sm text-gray-700 cursor-pointer select-none">
+              Selectează (toți din listă filtrată)
+            </label>
+            {selectedCount > 0 && (
+              <span className="text-xs text-gray-500 ml-2">{selectedCount} selectați</span>
+            )}
           </div>
 
           {/* Filtre */}
@@ -141,7 +155,7 @@ export const Step1SelectPartners: React.FC<Step1SelectPartnersProps> = ({
       </Card>
 
       {/* Lista parteneri */}
-      <div className="space-y-2 max-h-96 overflow-y-auto">
+      <div className="space-y-2 h-[60vh] overflow-y-scroll pr-1 rounded border bg-white">
         {filteredPartners.length === 0 ? (
           <Card className="p-6 text-center">
             <div className="text-gray-500">

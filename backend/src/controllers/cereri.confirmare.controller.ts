@@ -147,7 +147,8 @@ export class CereriConfirmareController {
             const {
                 idSesiune,
                 documenteReservate,
-                templateBlobContainer = 'templates'
+                templateBlobContainer = 'templates',
+                sesiuneData // ✅ preluăm și datele sesiunii pentru Step 3 (required de orchestrator)
             } = req.body;
 
             if (!idSesiune || !documenteReservate || !Array.isArray(documenteReservate)) {
@@ -161,7 +162,8 @@ export class CereriConfirmareController {
             const documenteGenerate = await cereriConfirmareOrchestratorService.generateDocumentePentruSesiune(
                 idSesiune,
                 documenteReservate,
-                templateBlobContainer
+                templateBlobContainer,
+                sesiuneData // ✅ transmitem mai departe
             );
 
             res.status(200).json({
@@ -244,48 +246,63 @@ export class CereriConfirmareController {
         try {
             const {
                 idSesiune,
-                documenteGenerateFinale,
+                documenteGenerateFinale, // array de documente (după upload semnate)
                 sesiuneData
             } = req.body;
 
-            // Validare input
-            if (!idSesiune || !documenteGenerateFinale || !Array.isArray(documenteGenerateFinale) || !sesiuneData) {
+            if (!idSesiune || !documenteGenerateFinale || !Array.isArray(documenteGenerateFinale)) {
                 res.status(400).json({
                     success: false,
-                    message: 'Parametri invalizi: idSesiune, documenteGenerateFinale (array) și sesiuneData sunt obligatorii'
+                    message: 'Parametri invalizi: idSesiune și documenteGenerateFinale (array) sunt obligatorii'
                 });
                 return;
             }
 
-            // Validare autentificare
             if (!req.user) {
-                res.status(401).json({
-                    success: false,
-                    message: 'Utilizator neautentificat'
-                });
+                res.status(401).json({ success: false, message: 'Utilizator neautentificat' });
                 return;
             }
 
-            console.log(`🏁 FINALIZARE STEP 4 pentru sesiunea: ${idSesiune}`);
-            console.log(`📋 Documente de finalizat: ${documenteGenerateFinale.length}`);
+            // Reconstruim sesiuneData completă cu informațiile utilizatorului + fallback-uri
+            const parteneriSelectati = documenteGenerateFinale.map((d: any) => d.idPartener).filter((v: any, i: number, a: any[]) => !!v && a.indexOf(v) === i);
+            const sesiuneDataCompleta = {
+                idUtilizator: req.user.IdUtilizatori || req.user.IdContabil || 'NECUNOSCUT',
+                numeUtilizator: req.user.NumeUtilizator || req.user.NumeContabil || 'Utilizator',
+                emailUtilizator: req.user.EmailUtilizator || req.user.EmailContabil || 'email@necunoscut',
+                rolUtilizator: req.user.RolUtilizator || (req.user.IdContabil ? 'CONTABIL' : 'USER'),
+                parteneriSelectati,
+                partnerCategory: sesiuneData?.partnerCategory || 'client_duc',
+                dataSold: sesiuneData?.dataSold || new Date().toISOString().substring(0,10),
+                folderLocal: sesiuneData?.folderLocal || 'C:/CereriConfirmare',
+                subiectEmail: sesiuneData?.subiectEmail || 'Confirmare sold',
+                templateBlobContainer: sesiuneData?.templateBlobContainer || 'templates'
+            };
 
-            // ACUM înregistrăm efectiv numerele în JurnalDocumenteEmise!
-            const rezultat = await cereriConfirmareOrchestratorService.finalizeazaSesiuneInStep4(
+            console.log(`🏁 STEP 4: Înregistrare documente pentru sesiunea ${idSesiune}`);
+            const step4Result = await cereriConfirmareOrchestratorService.finalizeazaSesiuneInStep4(
                 idSesiune,
                 documenteGenerateFinale,
-                sesiuneData
+                sesiuneDataCompleta as any
             );
 
-            console.log(`✅ STEP 4 COMPLET: Sesiunea ${idSesiune} finalizată cu ${rezultat.documenteInregistrate.length} documente`);
+            console.log(`✉️ STEP 5: Trimitere email-uri pentru sesiunea ${idSesiune}`);
+            const step5Result = await cereriConfirmareOrchestratorService.finalizareSesiune(
+                idSesiune,
+                step4Result.documenteInregistrate,
+                sesiuneDataCompleta as any
+            );
 
             res.status(200).json({
                 success: true,
-                message: `Sesiune finalizată cu succes! ${rezultat.documenteInregistrate.length} documente înregistrate în JurnalDocumenteEmise`,
-                data: rezultat
+                message: `Sesiune finalizată: ${step4Result.documenteInregistrate.length} documente înregistrate, ${step5Result.cereriTrimise.length} email-uri trimise`,
+                data: {
+                    documenteInregistrate: step4Result.documenteInregistrate,
+                    cereriTrimise: step5Result.cereriTrimise,
+                    erori: step5Result.erori
+                }
             });
-
         } catch (error) {
-            console.error('❌ Eroare la finalizarea sesiunii în Step 4:', error);
+            console.error('❌ Eroare la finalizarea sesiunii (Step4+5):', error);
             res.status(500).json({
                 success: false,
                 message: error instanceof Error ? error.message : 'Eroare la finalizarea sesiunii'

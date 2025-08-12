@@ -42,9 +42,6 @@ export const Step2GenerateDocuments = ({
     <Card>
       <CardHeader>
         <CardTitle>2. Generează Documentele</CardTitle>
-        <CardDescription>
-          Generează documentele PDF din șabloanele Azure Blob Storage
-        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {error && (

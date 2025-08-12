@@ -3,22 +3,23 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs/promises';
 import { authMiddleware } from '../middleware/auth.middleware';
+import { folderSettingsService } from '../services/folder.settings.service';
 
 const router = Router();
 
-// Configurare multer pentru upload-ul fișierelor semnate
+// Configurare multer pentru upload-ul fișierelor semnate folosind setările din SetariFoldere
 const storage = multer.diskStorage({
     destination: async (req, file, cb) => {
         const { idSesiune } = req.body;
         if (!idSesiune) {
             return cb(new Error('ID sesiune este obligatoriu'), '');
         }
-        
-        // Creează folderul pentru sesiune dacă nu există
-        const uploadDir = path.join(process.cwd(), 'uploads', 'signed-documents', idSesiune);
         try {
-            await fs.mkdir(uploadDir, { recursive: true });
-            cb(null, uploadDir);
+            const settings = await folderSettingsService.getFolderSettings();
+            const baseDir = settings.cereriSemnatePath || path.join(process.cwd(), 'uploads', 'signed-documents');
+            const sessionDir = path.join(baseDir, idSesiune);
+            await fs.mkdir(sessionDir, { recursive: true });
+            cb(null, sessionDir);
         } catch (error) {
             cb(error instanceof Error ? error : new Error('Eroare necunoscută'), '');
         }
@@ -124,31 +125,19 @@ router.delete('/signed-documents/:idSesiune',
     async (req: Request, res: Response): Promise<void> => {
         try {
             const { idSesiune } = req.params;
-            const uploadDir = path.join(process.cwd(), 'uploads', 'signed-documents', idSesiune);
-
+            const settings = await folderSettingsService.getFolderSettings();
+            const baseDir = settings.cereriSemnatePath || path.join(process.cwd(), 'uploads', 'signed-documents');
+            const uploadDir = path.join(baseDir, idSesiune);
             try {
-                await fs.rmdir(uploadDir, { recursive: true });
+                await fs.rm(uploadDir, { recursive: true, force: true });
                 console.log(`🗑️ Folder șters pentru sesiunea ${idSesiune}: ${uploadDir}`);
-                
-                res.json({
-                    success: true,
-                    message: 'Fișierele au fost șterse cu succes'
-                });
+                res.json({ success: true, message: 'Fișierele au fost șterse cu succes' });
             } catch (error) {
-                // Ignoră eroarea dacă folderul nu există
-                res.json({
-                    success: true,
-                    message: 'Folderul nu există sau a fost șters deja'
-                });
+                res.json({ success: true, message: 'Folderul nu există sau a fost șters deja' });
             }
-
         } catch (error) {
             console.error('Eroare la ștergerea fișierelor:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Eroare la ștergerea fișierelor',
-                error: error instanceof Error ? error.message : 'Eroare necunoscută'
-            });
+            res.status(500).json({ success: false, message: 'Eroare la ștergerea fișierelor', error: error instanceof Error ? error.message : 'Eroare necunoscută' });
         }
     }
 );

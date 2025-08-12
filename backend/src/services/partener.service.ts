@@ -1,5 +1,6 @@
 import { getDatabase } from '../config/sqlite';
 import { Partener } from '../models/Partener';
+import { v7 as uuidv7 } from 'uuid';
 
 export class PartenerService {
     
@@ -346,21 +347,70 @@ export class PartenerService {
         }
     }
 
+    // Utilitare interne pentru validări și referințe
+    private async existsByCUI(cui?: string): Promise<boolean> {
+        if (!cui) return false;
+        const db = await getDatabase();
+        const row = await db.get(`SELECT 1 as one FROM Parteneri WHERE CUIPartener = ? COLLATE NOCASE LIMIT 1`, [cui]);
+        return !!row;
+    }
+    private async existsByONRC(onrc?: string): Promise<boolean> {
+        if (!onrc) return false;
+        const db = await getDatabase();
+        const row = await db.get(`SELECT 1 as one FROM Parteneri WHERE ONRCPartener = ? COLLATE NOCASE LIMIT 1`, [onrc]);
+        return !!row;
+    }
+    async getPartenerReferences(id: string): Promise<{ table: string; count: number }[]> {
+        const candidateTables = [
+            'JurnalEmail',
+            'JurnalCereriConfirmare',
+            'CereriConfirmare',
+            'DocumenteRezervate',
+            'DocumenteGenerate'
+        ];
+        const db = await getDatabase();
+        const refs: { table: string; count: number }[] = [];
+        for (const tbl of candidateTables) {
+            try {
+                const row = await db.get(`SELECT COUNT(1) as cnt FROM ${tbl} WHERE IdPartener = ?`, [id]);
+                if (row && row.cnt > 0) refs.push({ table: tbl, count: row.cnt });
+            } catch {
+                // ignoră tabele inexistente în instanța curentă
+            }
+        }
+        return refs;
+    }
+
     // Creează un partener nou
     async createPartener(partenerData: Partial<Partener>): Promise<Partener> {
         try {
             const db = await getDatabase();
-            
+
+            // Validări suplimentare
+            if (!partenerData.onrcPartener || !partenerData.onrcPartener.toString().trim()) {
+                throw new Error('VALIDATION:ONRCPartener este obligatoriu');
+            }
+            if (await this.existsByCUI(partenerData.cuiPartener)) {
+                throw new Error('CONFLICT:CUI deja existent');
+            }
+            if (await this.existsByONRC(partenerData.onrcPartener)) {
+                throw new Error('CONFLICT:ONRC deja existent');
+            }
+
+            // Generăm UUID v7 (ordonabil temporal) și îl convertim la UPPERCASE pentru consistență cu istoricul migrat
+            const newId = uuidv7().toUpperCase();
+
             const query = `
                 INSERT INTO Parteneri (
-                    NumePartener, CUIPartener, ONRCPartener, EmailPartener, 
+                    IdPartener, NumePartener, CUIPartener, ONRCPartener, EmailPartener, 
                     ReprezentantPartener, ClientDUC, FurnizorDUC, ClientDL, FurnizorDL,
                     AdresaPartener, TelefonPartener, ObservatiiPartener, PartenerActiv,
                     DataCrearePartener, DataModificarePartener
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
             `;
-            
-            const result = await db.run(query, [
+
+            await db.run(query, [
+                newId,
                 partenerData.numePartener,
                 partenerData.cuiPartener,
                 partenerData.onrcPartener || null,
@@ -376,13 +426,9 @@ export class PartenerService {
                 partenerData.partenerActiv !== false ? 1 : 0
             ]);
 
-            // Obține partenerul creat
-            if (!result.lastID) {
-                throw new Error('Nu s-a putut obține ID-ul partenerului creat');
-            }
-            const newPartener = await this.getPartenerById(result.lastID.toString());
+            const newPartener = await this.getPartenerById(newId);
             if (!newPartener) {
-                throw new Error('Partenerul nu a putut fi creat');
+                throw new Error('Partenerul nu a putut fi creat (select ulterior eșuat)');
             }
             return newPartener;
         } catch (error) {
@@ -436,28 +482,24 @@ export class PartenerService {
         }
     }
 
-    // Șterge un partener (dezactivează în loc de ștergere completă)
+    // Șterge un partener (hard delete definitiv)
     async deletePartener(id: string): Promise<boolean> {
         try {
             const db = await getDatabase();
-            
-            // Verifică dacă partenerul există
-            const existingPartener = await this.getPartenerById(id);
-            if (!existingPartener) {
-                return false;
+            // Referințe înainte de ștergere
+            const refs = await this.getPartenerReferences(id);
+            if (refs.length > 0) {
+                const detail = refs.map(r => `${r.table}(${r.count})`).join(', ');
+                throw new Error('REFERENCES:Există referințe active: ' + detail);
             }
+            console.log(`🗑️ Hard delete request pentru partener ${id}`);
 
-            // Dezactivează partenerul în loc să-l șteargă complet
-            const query = `
-                UPDATE Parteneri 
-                SET PartenerActiv = 0, DataModificarePartener = datetime('now', 'localtime')
-                WHERE IdPartener = ?
-            `;
-            
-            const result = await db.run(query, [id]);
+            const result = await db.run(`DELETE FROM Parteneri WHERE IdPartener = ?`, [id]);
+            console.log(`📝 DELETE executat - changes=${result.changes}`);
+
             return (result.changes ?? 0) > 0;
         } catch (error) {
-            console.error('Eroare la ștergerea partenerului:', error);
+            console.error('Eroare la ștergerea partenerului (hard delete):', error);
             throw error;
         }
     }

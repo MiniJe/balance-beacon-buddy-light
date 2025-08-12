@@ -49,7 +49,6 @@ export const API_ENDPOINTS = {
   
   // Confirmation requests
   CONFIRMATION_REQUESTS: '/cereri-confirmare',
-  ADVANCED_CONFIRMATION_REQUESTS: '/advanced-cereri-confirmare',
   
   // Auto reminders
   AUTO_REMINDER: '/auto-reminder'

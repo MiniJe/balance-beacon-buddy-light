@@ -68,9 +68,6 @@ export const Step3UploadFiles = ({
     <Card>
       <CardHeader>
         <CardTitle>3. Semnează și Încarcă Fișierele</CardTitle>
-        <CardDescription>
-          Semnează documentele generate și încarcă-le înapoi în aplicație
-        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {error && (

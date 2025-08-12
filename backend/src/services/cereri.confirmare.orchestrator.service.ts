@@ -11,6 +11,7 @@ import { pdfGenerationService } from './pdf.generation.service';
 import { templateManagerService } from './template.manager.service';
 // import { advancedStorageService } from './advanced.storage.service'; // ❌ eliminat Azure
 import { EmailTemplateService } from './template.service';
+import { EmailTemplateProcessor } from './template.processor.sqlite';
 import { CreateJurnalDocumenteEmiseDto } from '../models/JurnalDocumenteEmise';
 import { CreateJurnalCereriConfirmareDto } from '../models/JurnalCereriConfirmare.Real';
 import { CreateJurnalSesiuniDto } from '../models/JurnalSesiuni';
@@ -44,6 +45,8 @@ interface DocumentGenerat {
     tipPartener: string;
     numeDocument: string;
     caleFisier: string;
+    // ✅ NOU: păstrăm separat și calea fișierului semnat pentru a evita confuzii
+    caleFisierSemnat?: string;
     hashDocument: string; // hash original PDF generat (nesemnat)
     hashDocumentSemnat?: string; // ✅ nou: hash al PDF-ului semnat (nu suprascrie originalul)
     dimensiuneDocument: number;
@@ -713,7 +716,9 @@ export class CereriConfirmareOrchestratorService {
                             const hashSemnat = crypto.createHash('sha256').update(fileBuffer).digest('hex');
                             docGenerat.hashDocumentSemnat = hashSemnat; // NU mai suprascriem hashDocument
                             docGenerat.dimensiuneDocument = fileBuffer.length; // ultima dimensiune (semnat)
-                            docGenerat.caleFisier = caleFisierSemnat; // cale către fișierul semnat local
+                            // ✅ Păstrează și calea semnată separat, plus actualizează calea curentă pentru utilizare imediată
+                            docGenerat.caleFisierSemnat = caleFisierSemnat;
+                            docGenerat.caleFisier = caleFisierSemnat; // pentru compatibilitate retro
                             console.log(`🔐 Hash original: ${docGenerat.hashDocument}`);
                             console.log(`🔐 Hash semnat:   ${docGenerat.hashDocumentSemnat}`);
                         } catch (hErr) {
@@ -766,251 +771,88 @@ export class CereriConfirmareOrchestratorService {
         sesiuneData: SesiuneCereriData
     ): Promise<SesiuneCompleta> {
         try {
-            console.log('🔥 STEP 5: Finalizare și trimitere - ÎNCEPE SALVAREA ATOMICĂ ÎN BAZA DE DATE!');
-            console.log(`🎯 Pentru sesiunea: ${idSesiune} cu ${documenteProcesate.length} documente`);
-            
+            console.log('🔥 STEP 5: Finalizare și trimitere cu PRE-FLIGHT înainte de orice insert');
             const cereriTrimise: string[] = [];
             const erori: string[] = [];
-            
+            let skipPreFlight = 0;
             for (const doc of documenteProcesate) {
+                const pre = await this.preFlightPartener(doc, sesiuneData);
+                if (!pre.ok) {
+                    skipPreFlight++;
+                    erori.push(`SKIP ${doc.numePartener}: ${pre.reason}`);
+                    console.warn(`⏭️ PRE-FLIGHT SKIP ${doc.numePartener}: ${pre.reason}`);
+                    continue; // nimic în DB pentru acest partener
+                }
+                const partener = pre.partener!;
                 try {
-                    // 1. Obține datele partenerului
-                    const partener = await this.getPartenerById(doc.idPartener);
-                    if (!partener) {
-                        erori.push(`Partenerul cu ID ${doc.idPartener} nu a fost găsit`);
-                        continue;
-                    }
-                    
-                    // 2. Creează înregistrarea completă în jurnalul cererilor (pentru blockchain)
-                    const emailTemplate = await this.determineEmailTemplateFromCategory(
-                        sesiuneData.partnerCategory,
-                        partener
-                    );
-                    
+                    // Creare cerere doar după pre-flight reușit
                     const cerereDto: CreateJurnalCereriConfirmareDto = {
                         IdPartener: doc.idPartener,
                         DataCerere: new Date().toISOString(),
                         NumeFisier: doc.numeDocument,
-                        URLFisier: doc.caleFisier,
+                        URLFisier: doc.caleFisierSemnat || doc.caleFisier,
                         Stare: 'in_asteptare',
                         LotId: idSesiune,
                         CreatDe: sesiuneData.idUtilizator,
                         TrimisDe: sesiuneData.idUtilizator,
                         DataTrimitere: new Date().toISOString(),
-                        Observatii: `Cerere trimisă automat în sesiunea ${idSesiune} pentru ${doc.numePartener}`,
+                        Observatii: `Cerere pregătită (pre-flight OK) pentru ${doc.numePartener}`,
                         HashDocument: doc.hashDocument
                     };
-                    
                     const cerereCreata = await jurnalCereriConfirmareRealService.createCerereConfirmare(cerereDto);
-                    
-                    // 3. Trimite email-ul cu documentul atașat
-                    if (partener.emailPartener) {
-                        try {
-                            // Determină template-ul pe baza categoriei partenerului
-                            const templateId = await this.determineEmailTemplateFromCategory(
-                                sesiuneData.partnerCategory,
-                                partener // ✅ Pasăm și partenerul pentru determinarea corectă
-                            );
-                            
-                            console.log(`📧 Template email selectat pentru ${partener.numePartener}: ${templateId || 'NONE'} (categoria: ${sesiuneData.partnerCategory})`);
-                            
-                            let emailContent = {
-                                text: `Cerere de confirmare sold pentru data ${sesiuneData.dataSold}`,
-                                html: `<p>Vă rugăm să confirmați soldul pentru data ${sesiuneData.dataSold}.</p>`
-                            };
 
-                            // Dacă avem template, îl procesăm
-                            if (templateId) {
-                                try {
-                                    const processedTemplate = await this.emailTemplateService.processTemplate(templateId, {
-                                        numePartener: partener.numePartener,
-                                        nume: partener.numePartener,
-                                        cuiPartener: partener.cuiPartener,
-                                        cui: partener.cuiPartener,
-                                        dataSold: sesiuneData.dataSold,
-                                        perioadaConfirmare: sesiuneData.dataSold,
-                                        numeUtilizator: sesiuneData.numeUtilizator,
-                                        dataActuala: new Date().toLocaleDateString('ro-RO'),
-                                        reprezentantPartener: partener.reprezentantPartener,
-                                        reprezentant: partener.reprezentantPartener,
-                                        numeCompanie: process.env.NUME_COMPANIE || 'Compania Noastră'
-                                    });
-                                    
-                                    if (processedTemplate) {
-                                        emailContent.html = processedTemplate;
-                                        emailContent.text = processedTemplate.replace(/<[^>]*>/g, ''); // Strip HTML tags pentru text
-                                    }
-                                } catch (templateError) {
-                                    console.warn(`Eroare la procesarea template-ului ${templateId}:`, templateError);
-                                    // Continuăm cu template-ul default
-                                }
-                            }
+                    // Trimitere email
+                    const emailResult = await emailService.sendEmailWithAttachment({
+                        to: partener.emailPartener!,
+                        subject: sesiuneData.subiectEmail,
+                        text: pre.textFallback || `Cerere de confirmare sold pentru data ${sesiuneData.dataSold}`,
+                        html: pre.processedHtml!,
+                        attachments: [{ filename: path.basename(doc.caleFisierSemnat || doc.caleFisier), path: doc.caleFisierSemnat || doc.caleFisier }]
+                    }, {
+                        partnerId: partener.idPartener,
+                        recipientName: partener.numePartener,
+                        recipientType: 'PARTENER',
+                        batchId: idSesiune,
+                        confirmationRequestId: cerereCreata.IdJurnal.toString(),
+                        emailType: 'CONFIRMARE',
+                        createdBy: sesiuneData.idUtilizator,
+                        senderName: sesiuneData.numeUtilizator,
+                        senderEmail: sesiuneData.emailUtilizator,
+                        priority: 'NORMAL',
+                        templateId: pre.templateId || undefined,
+                        attachmentHash: pre.attachmentHash,
+                        digitalSignatureStatus: pre.digitalSignatureStatus,
+                        originalDocumentHash: doc.hashDocument,
+                        templateMeta: { templateId: pre.templateId, processed: true, partnerId: partener.idPartener }
+                    });
 
-                            // Calculare hash pentru fișierul PDF SEMNAT de utilizator (încărcat în Step 4)
-                            let pdfHashSemnaturizat = '';
-                            let statusSemnaturăDigitală = 'UNKNOWN';
-                            try {
-                                const pdfBufferSemnaturizat = fsSync.readFileSync(doc.caleFisier);
-                                pdfHashSemnaturizat = crypto.createHash('sha256').update(pdfBufferSemnaturizat).digest('hex');
-                                // Dacă avem deja hashDocumentSemnat din Step 3, îl folosim pentru consistență
-                                if (doc.hashDocumentSemnat && doc.hashDocumentSemnat !== pdfHashSemnaturizat) {
-                                    console.warn(`⚠️ Hash semnat recalculat diferit față de cel din Step 3 pentru ${doc.numeDocument}`);
-                                }
-                                // Comparăm hash original (generat) cu hash semnat (recalculat acum)
-                                if (pdfHashSemnaturizat === doc.hashDocument) {
-                                    statusSemnaturăDigitală = 'NESEMNAT_DETECTAT';
-                                } else {
-                                    statusSemnaturăDigitală = 'SEMNAT_VALID';
-                                }
-                            } catch (error) {
-                                console.error(`❌ Eroare la calcularea hash-ului pentru PDF semnat ${doc.numeDocument}:`, error);
-                                pdfHashSemnaturizat = 'error_calculating_hash';
-                                statusSemnaturăDigitală = 'ERROR_VALIDATION';
-                            }
-
-                            // 🛡️ PROTECȚIE CRITICĂ: Împiedică trimiterea fișierelor nesemnate
-                            if (statusSemnaturăDigitală === 'NESEMNAT_DETECTAT') {
-                                const shouldBlock = this.BLOCK_UNSIGNED_FILES && !this.ALLOW_UNSIGNED_IN_DEVELOPMENT;
-                                
-                                console.log(`🚨 FIȘIER NESEMNAT DETECTAT: ${doc.numeDocument} pentru ${partener.numePartener}`);
-                                console.log(`� Configurare: BLOCK_UNSIGNED_FILES=${this.BLOCK_UNSIGNED_FILES}, NODE_ENV=${process.env.NODE_ENV}, ALLOW_UNSIGNED_IN_DEV=${process.env.ALLOW_UNSIGNED_IN_DEV}`);
-                                
-                                if (shouldBlock) {
-                                    console.log(`�🛑 BLOCARE TRIMITERE: Fișierul ${doc.numeDocument} pentru ${partener.numePartener} NU va fi trimis (nesemnat)!`);
-                                    
-                                    // Marchează cererea ca eșuată din cauza fișierului nesemnat
-                                    await jurnalCereriConfirmareRealService.updateCerereConfirmare(cerereCreata.IdJurnal, {
-                                        Stare: 'esuata',
-                                        Observatii: `🚨 BLOCATĂ: Fișier PDF nesemnat detectat (hash identic cu originalul). Utilizatorul trebuie să semneze documentul cu certificat digital înainte de trimitere.`
-                                    });
-                                    
-                                    // Înregistrează în JurnalEmail ca FAILED cu motiv specific
-                                    await emailService.logEmailFailed({
-                                        to: partener.emailPartener,
-                                        subject: sesiuneData.subiectEmail,
-                                        error: 'Fișier PDF nesemnat detectat - trimitere blocată pentru securitate',
-                                        partnerId: partener.idPartener,
-                                        recipientName: partener.numePartener,
-                                        recipientType: 'PARTENER',
-                                        batchId: idSesiune,
-                                        confirmationRequestId: cerereCreata.IdJurnal.toString(),
-                                        emailType: 'CONFIRMARE',
-                                        createdBy: sesiuneData.idUtilizator,
-                                        senderName: sesiuneData.numeUtilizator,
-                                        senderEmail: sesiuneData.emailUtilizator,
-                                        templateId: templateId || undefined,
-                                        attachmentHash: pdfHashSemnaturizat,
-                                        digitalSignatureStatus: statusSemnaturăDigitală,
-                                        originalDocumentHash: doc.hashDocument
-                                    });
-                                    
-                                    // Sari la următorul partener
-                                    continue;
-                                } else {
-                                    console.log(`⚠️ AVERTISMENT: Fișierul ${doc.numeDocument} este nesemnat dar trimiterea continuă (configurare de dezvoltare sau blocare dezactivată)`);
-                                }
-                            }
-                            
-                            // 🔒 PROTECȚIE SUPLIMENTARĂ: Verifică și cazurile de eroare
-                            if (statusSemnaturăDigitală === 'ERROR_VALIDATION') {
-                                console.log(`⚠️ AVERTISMENT: Eroare la validarea semnăturii pentru ${doc.numeDocument} - ${partener.numePartener}. Trimiterea continuă dar necesită verificare manuală.`);
-                            }
-
-                            console.log(`✅ VALIDARE TRECUTĂ: Trimitem emailul pentru ${partener.numePartener} cu fișierul ${doc.numeDocument} (Status: ${statusSemnaturăDigitală})`);
-
-                            const emailResult = await emailService.sendEmailWithAttachment({
-                                to: partener.emailPartener,
-                                subject: sesiuneData.subiectEmail,
-                                text: emailContent.text,
-                                html: emailContent.html,
-                                attachments: [{
-                                    filename: doc.numeDocument,
-                                    path: doc.caleFisier // Atașează fișierul PDF SEMNATURIZAT de utilizator
-                                }]
-                            }, {
-                                // Informații suplimentare pentru JurnalEmail
-                                partnerId: partener.idPartener,
-                                recipientName: partener.numePartener,
-                                recipientType: 'PARTENER',
-                                batchId: idSesiune,
-                                confirmationRequestId: cerereCreata.IdJurnal.toString(),
-                                emailType: 'CONFIRMARE',
-                                createdBy: sesiuneData.idUtilizator,
-                                senderName: sesiuneData.numeUtilizator,
-                                senderEmail: sesiuneData.emailUtilizator,
-                                priority: 'NORMAL',
-                                // ✅ ADĂUGAT: IdSablon și hash-ul fișierului PDF
-                                templateId: templateId || undefined, // ID-ul șablonului de email folosit
-                                attachmentHash: pdfHashSemnaturizat, // Hash-ul SHA-256 al fișierului PDF semnaturizat de utilizator
-                                // 🔐 ADĂUGAT: Status validare semnătură digitală pentru audit
-                                digitalSignatureStatus: statusSemnaturăDigitală, // SEMNAT_VALID / NESEMNAT_DETECTAT / ERROR_VALIDATION
-                                originalDocumentHash: doc.hashDocument // Hash-ul documentului original pentru comparație
-                            });
-                            
-                            // Actualizează cererea cu informațiile despre trimitere
-                            if (emailResult.success) {
-                                await jurnalCereriConfirmareRealService.updateCerereConfirmare(cerereCreata.IdJurnal, {
-                                    Stare: 'trimisa',
-                                    DataTrimitere: new Date().toISOString(),
-                                    Observatii: `Email trimis cu succes către ${partener.emailPartener}`
-                                });
-                            } else {
-                                await jurnalCereriConfirmareRealService.updateCerereConfirmare(cerereCreata.IdJurnal, {
-                                    Stare: 'esuata',
-                                    Observatii: `Eroare la trimiterea email-ului: ${emailResult.error}`
-                                });
-                            }
-                            
-                            // Nu mai actualizăm JurnalDocumenteEmise - este doar pentru numerotare
-                            // Statusul final este deja în JurnalCereriConfirmare
-                            
-                            cereriTrimise.push(cerereCreata.IdJurnal.toString());
-                            console.log(`📧 Email trimis cu succes către: ${doc.numePartener}`);
-                            
-                        } catch (emailError) {
-                            erori.push(`Eroare la trimiterea email-ului către ${doc.numePartener}: ${emailError}`);
-                            console.error(`❌ Eroare email pentru ${doc.numePartener}:`, emailError);
-                            
-                            // Actualizează cu eroarea
-                            await jurnalCereriConfirmareRealService.updateCerereConfirmare(cerereCreata.IdJurnal, {
-                                Stare: 'esuata',
-                                Observatii: `Eroare la trimiterea email-ului: ${emailError instanceof Error ? emailError.message : 'Eroare necunoscută'}`
-                            });
-                        }
+                    if (emailResult.success) {
+                        await jurnalCereriConfirmareRealService.updateCerereConfirmare(cerereCreata.IdJurnal, {
+                            Stare: 'trimisa',
+                            DataTrimitere: new Date().toISOString(),
+                            Observatii: `Email trimis cu succes către ${partener.emailPartener}`
+                        });
+                        cereriTrimise.push(cerereCreata.IdJurnal.toString());
                     } else {
-                        erori.push(`Nu există adresă de email pentru partenerul ${doc.numePartener}`);
-                        
-                        // Actualizează cu lipsa email-ului
                         await jurnalCereriConfirmareRealService.updateCerereConfirmare(cerereCreata.IdJurnal, {
                             Stare: 'esuata',
-                            Observatii: 'Nu există adresă de email pentru partener'
+                            Observatii: `Eroare la trimiterea email-ului: ${emailResult.error}`
                         });
+                        erori.push(`Eroare trimitere email ${partener.numePartener}: ${emailResult.error}`);
                     }
-                    
-                } catch (error) {
-                    erori.push(`Eroare la procesarea cererii pentru ${doc.numePartener}: ${error}`);
-                    console.error(`❌ Eroare la procesarea cererii pentru ${doc.numePartener}:`, error);
+                } catch (err) {
+                    erori.push(`Eroare procesare după pre-flight pentru ${doc.numePartener}: ${err instanceof Error ? err.message : err}`);
+                    console.error('❌ Eroare post pre-flight:', err);
                 }
             }
-            
-            // 5. Închide sesiunea
             await jurnalSesiuniService.updateSesiune(idSesiune, {
-                observatii: `Sesiune finalizată - ${cereriTrimise.length} cereri trimise, ${erori.length} erori`
+                observatii: `Sesiune finalizată - cereri trimise: ${cereriTrimise.length}, skip pre-flight: ${skipPreFlight}, erori: ${erori.length}`
             });
-            
-            const rezultat: SesiuneCompleta = {
-                idSesiune,
-                documenteGenerate: documenteProcesate,
-                cereriTrimise,
-                erori
-            };
-            
-            console.log(`🎉 Sesiune finalizată cu succes: ${cereriTrimise.length} cereri trimise`);
-            
+            const rezultat: SesiuneCompleta = { idSesiune, documenteGenerate: documenteProcesate, cereriTrimise, erori };
+            console.log(`🎉 Sesiune finalizată: trimise=${cereriTrimise.length}, skipPreFlight=${skipPreFlight}, erori=${erori.length}`);
             return rezultat;
-            
         } catch (error) {
-            console.error('❌ Eroare la finalizarea sesiunii:', error);
+            console.error('❌ Eroare la finalizarea sesiunii (refactor pre-flight):', error);
             throw new Error(`Eroare la finalizarea sesiunii: ${error instanceof Error ? error.message : 'Eroare necunoscută'}`);
         }
     }
@@ -1041,7 +883,8 @@ export class CereriConfirmareOrchestratorService {
                         numeUtilizator: sesiuneData.numeUtilizator,
                         emailUtilizator: sesiuneData.emailUtilizator,
                         idSesiune: idSesiune,
-                        caleFisier: doc.caleFisier,
+                        // ✅ folosim calea semnată dacă există
+                        caleFisier: doc.caleFisierSemnat || doc.caleFisier,
                         observatii: `Document finalizat pentru partenerul ${doc.numePartener} - Nr înregistrare: ${doc.numarInregistrare}`
                     });
                     
@@ -1128,6 +971,11 @@ export class CereriConfirmareOrchestratorService {
         const diferente: string[] = [];
         
         // Verifică diferența între originalul generat și cel semnaturizat de utilizator
+        if (hashOriginal === hashSemnaturizat) {
+            diferente.push('⚠️ ATENȚIE: Hash PDF original = Hash PDF semnaturizat (utilizatorul nu a semnat documentul cu certificat digital)');
+        } else {
+            console.log('✅ Hash PDF original ≠ Hash PDF semnaturizat (utilizatorul a semnat corect cu certificat digital)');
+        }
         
         // Verifică diferența față de documentul returnat de partener (dacă există)
         if (hashPartenerReturnat) {
@@ -1243,6 +1091,91 @@ export class CereriConfirmareOrchestratorService {
                 detaliiNesemnate: [],
                 recomandat: 'Audit nu este disponibil din cauza erorii - migrare la SQLite în curs'
             };
+        }
+    }
+    
+    private async preFlightPartener(
+        doc: DocumentGenerat,
+        sesiuneData: SesiuneCereriData
+    ): Promise<{
+        ok: boolean;
+        reason?: string;
+        partener?: Partener;
+        templateId?: string | null;
+        processedHtml?: string;
+        textFallback?: string;
+        digitalSignatureStatus?: string;
+        attachmentHash?: string;
+    }> {
+        try {
+            const partener = await this.getPartenerById(doc.idPartener);
+            if (!partener) return { ok: false, reason: `Partener inexistent (ID=${doc.idPartener})` };
+            if (!partener.emailPartener) return { ok: false, reason: `Lipsește email partener (${partener.numePartener})` };
+
+            // Determină template email
+            const templateId = await this.determineEmailTemplateFromCategory(sesiuneData.partnerCategory, partener);
+            if (!templateId) return { ok: false, reason: `Nu a fost găsit șablon email activ pentru categorie (${sesiuneData.partnerCategory})` };
+
+            // Obține template și procesează
+            const template = await this.emailTemplateService.getTemplateById(templateId);
+            if (!template || !template.ContinutSablon) {
+                return { ok: false, reason: `Șablon email invalid / fără conținut (${templateId})` };
+            }
+            const processedHtml = await EmailTemplateProcessor.processTemplateContent(template.ContinutSablon, {
+                numePartener: partener.numePartener,
+                cuiPartener: partener.cuiPartener,
+                dataSold: sesiuneData.dataSold,
+                numeUtilizator: sesiuneData.numeUtilizator,
+                emailUtilizator: sesiuneData.emailUtilizator,
+                rolUtilizator: sesiuneData.rolUtilizator,
+                dataActuala: new Date().toLocaleDateString('ro-RO'),
+                reprezentantPartener: partener.reprezentantPartener,
+                adresaPartener: partener.adresaPartener,
+                numarInregistrare: doc.numarInregistrare,
+                numeDocument: doc.numeDocument,
+                partnerCategory: sesiuneData.partnerCategory,
+                NUME_PARTENER: partener.numePartener,
+                CUI_PARTENER: partener.cuiPartener,
+                CUI: partener.cuiPartener,
+                ADRESA_PARTENER: partener.adresaPartener,
+                REPREZENTANT_PARTENER: partener.reprezentantPartener,
+                DATA_SOLD: sesiuneData.dataSold,
+                PERIOADA: sesiuneData.dataSold,
+                PERIOADA_CONFIRMARE: sesiuneData.dataSold,
+                NUME_UTILIZATOR: sesiuneData.numeUtilizator,
+                EMAIL_UTILIZATOR: sesiuneData.emailUtilizator,
+                ROL_UTILIZATOR: sesiuneData.rolUtilizator,
+                NUMAR_INREGISTRARE: String(doc.numarInregistrare),
+                NR_CERERE: String(doc.numarInregistrare),
+                NUME_DOCUMENT: doc.numeDocument,
+                DATA_CURENTA: new Date().toLocaleDateString('ro-RO')
+            });
+            const textFallback = processedHtml.replace(/<[^>]*>/g, ' ');
+
+            // Validare semnătură PDF înainte de insert
+            const effectivePath = doc.caleFisierSemnat || doc.caleFisier;
+            let digitalSignatureStatus = 'UNKNOWN';
+            let attachmentHash = '';
+            try {
+                if (!effectivePath || !fsSync.existsSync(effectivePath)) {
+                    return { ok: false, reason: 'Fișier PDF semnat inexistent (pre-flight)', partener };
+                }
+                const buffer = fsSync.readFileSync(effectivePath);
+                attachmentHash = crypto.createHash('sha256').update(buffer).digest('hex');
+                if (!doc.hashDocument) {
+                    return { ok: false, reason: 'Hash original lipsă', partener };
+                }
+                digitalSignatureStatus = (attachmentHash === doc.hashDocument) ? 'NESEMNAT_DETECTAT' : 'SEMNAT_VALID';
+                if (digitalSignatureStatus === 'NESEMNAT_DETECTAT' && this.BLOCK_UNSIGNED_FILES && !this.ALLOW_UNSIGNED_IN_DEVELOPMENT) {
+                    return { ok: false, reason: 'PDF nesemnat detectat (hash identic cu originalul)', partener };
+                }
+            } catch (e) {
+                return { ok: false, reason: 'Eroare validare semnătură PDF', partener };
+            }
+
+            return { ok: true, partener, templateId, processedHtml, textFallback, digitalSignatureStatus, attachmentHash };
+        } catch (err) {
+            return { ok: false, reason: err instanceof Error ? err.message : 'Eroare necunoscută pre-flight' };
         }
     }
 }

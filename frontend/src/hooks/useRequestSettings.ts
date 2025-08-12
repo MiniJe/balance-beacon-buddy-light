@@ -236,7 +236,7 @@ export const useRequestSettings = () => {
         observatii: `Sesiune inițializată pentru ${selectedPartners.length} parteneri din categoria ${partnerCategory}`
       };
 
-      const response = await fetch('/api/advanced-cereri-confirmare/initialize-session', {
+      const response = await fetch('/api/cereri-confirmare/initialize-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -290,7 +290,7 @@ export const useRequestSettings = () => {
         observatii: `STEP 3: Generare documente pentru ${selectedPartners.length} parteneri din categoria ${partnerCategory}`
       };
 
-      const response = await fetch('/api/advanced-cereri-confirmare/generate-documents', {
+      const response = await fetch('/api/cereri-confirmare/generate-documents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -530,16 +530,17 @@ export const useRequestSettings = () => {
       }
 
       // Backend-ul va extrage informațiile utilizatorului din token-ul JWT
-      const response = await fetch('/api/advanced-cereri-confirmare/finalize-session', {
+      const response = await fetch('/api/cereri-confirmare/finalize-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`, // Asigură-te că token-ul este trimis
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
         },
         body: JSON.stringify({
           idSesiune: currentSession.idSesiune,
-          documenteProcesate,
+          documenteGenerateFinale: documenteProcesate, // schimbat cheie conform backend
           sesiuneData: {
+            partnerCategory,
             dataSold: format(date!, 'yyyy-MM-dd'),
             subiectEmail: emailSubject,
             folderLocal

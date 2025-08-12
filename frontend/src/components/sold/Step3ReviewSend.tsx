@@ -46,6 +46,7 @@ interface Step3ReviewSendProps {
   orderNumbers: OrderNumberAssignment[];
   onSendEmails: () => Promise<void>;
   processing: boolean;
+  userInfo?: { idUtilizator: string; numeUtilizator: string; emailUtilizator: string };
 }
 
 export const Step3ReviewSend: React.FC<Step3ReviewSendProps> = ({
@@ -56,6 +57,7 @@ export const Step3ReviewSend: React.FC<Step3ReviewSendProps> = ({
   orderNumbers,
   onSendEmails,
   processing,
+  userInfo,
 }) => {
   const [previewPartner, setPreviewPartner] = useState<Partner | null>(null);
 
@@ -82,14 +84,16 @@ export const Step3ReviewSend: React.FC<Step3ReviewSendProps> = ({
     const dataFormatata = date ? format(date, 'dd.MM.yyyy', { locale: ro }) : "31.07.2025";
     const dataGenerare = format(new Date(), 'dd.MM.yyyy HH:mm', { locale: ro });
     const orderAssignment = orderNumbers.find(o => o.idPartener === partner.idPartener);
+    const numeUtilizator = userInfo?.numeUtilizator || 'Utilizator';
+    const emailUtilizator = userInfo?.emailUtilizator || 'user@example.com';
 
     let personalizedTemplate = emailTemplate
       .replace(/{NUME_PARTENER}/g, partner.numePartener)
       .replace(/{DATA}/g, dataFormatata)
       .replace(/{NUMAR_ORDINE}/g, orderAssignment?.orderNumber.toString() || partner.orderNumber?.toString() || "N/A")
       .replace(/{TIP_PARTENER}/g, getPartnerTypeString(partner))
-      .replace(/{NUME_UTILIZATOR}/g, "John Doe") // Ar veni din context real
-      .replace(/{EMAIL_UTILIZATOR}/g, "john.doe@company.com") // Ar veni din context real
+      .replace(/{NUME_UTILIZATOR}/g, numeUtilizator)
+      .replace(/{EMAIL_UTILIZATOR}/g, emailUtilizator)
       .replace(/{DATA_GENERARE}/g, dataGenerare);
 
     return personalizedTemplate;
@@ -309,24 +313,6 @@ export const Step3ReviewSend: React.FC<Step3ReviewSendProps> = ({
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Informații importante */}
-      <Card className="border-orange-200 bg-orange-50">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-2">
-            <CheckCircle2 className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-orange-800">
-              <p className="font-medium mb-1">Informații importante:</p>
-              <ul className="space-y-1 text-xs">
-                <li>• Email-urile vor fi trimise individual către fiecare partener</li>
-                <li>• Fiecare email va conține numărul de ordine unic generat</li>
-                <li>• Nu se vor genera documente PDF - doar email-uri cu solicitări</li>
-                <li>• Partenerii vor primi instrucțiuni pentru emiterea fișelor partener</li>
-              </ul>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

@@ -146,55 +146,6 @@ export class JurnalEmailService {
                 paramIndex++;
             }
             
-            // Câmpuri blockchain
-            if (data.HashEmail !== undefined) {
-                updateFields.push(`HashEmail = ?${paramIndex}`);
-                params.push(data.HashEmail);
-                paramIndex++;
-            }
-            
-            if (data.HashTranzactieBlockchain !== undefined) {
-                updateFields.push(`HashTranzactieBlockchain = ?${paramIndex}`);
-                params.push(data.HashTranzactieBlockchain);
-                paramIndex++;
-            }
-            
-            if (data.StareBlockchain !== undefined) {
-                updateFields.push(`StareBlockchain = ?${paramIndex}`);
-                params.push(data.StareBlockchain);
-                paramIndex++;
-            }
-            
-            if (data.TimestampBlockchain !== undefined) {
-                updateFields.push(`TimestampBlockchain = ?${paramIndex}`);
-                params.push(data.TimestampBlockchain);
-                paramIndex++;
-            }
-            
-            if (data.ReteaBlockchain !== undefined) {
-                updateFields.push(`ReteaBlockchain = ?${paramIndex}`);
-                params.push(data.ReteaBlockchain);
-                paramIndex++;
-            }
-            
-            if (data.AdresaContractBlockchain !== undefined) {
-                updateFields.push(`AdresaContractBlockchain = ?${paramIndex}`);
-                params.push(data.AdresaContractBlockchain);
-                paramIndex++;
-            }
-            
-            if (data.GazUtilizat !== undefined) {
-                updateFields.push(`GazUtilizat = ?${paramIndex}`);
-                params.push(data.GazUtilizat);
-                paramIndex++;
-            }
-            
-            if (data.CostTranzactie !== undefined) {
-                updateFields.push(`CostTranzactie = ?${paramIndex}`);
-                params.push(data.CostTranzactie);
-                paramIndex++;
-            }
-
             // Adaugă câmpurile de audit
             updateFields.push(`ModificatLa = ?${paramIndex}`);
             params.push(new Date().toISOString());
@@ -318,17 +269,6 @@ export class JurnalEmailService {
                 params.push(...filters.TipDestinatar);
             }
 
-            if (filters.StareBlockchain && filters.StareBlockchain.length > 0) {
-                const stareBlockchainPlaceholders = filters.StareBlockchain.map(() => '?').join(', ');
-                whereConditions.push(`StareBlockchain IN (${stareBlockchainPlaceholders})`);
-                params.push(...filters.StareBlockchain);
-            }
-
-            if (filters.ReteaBlockchain) {
-                whereConditions.push('ReteaBlockchain = ?');
-                params.push(filters.ReteaBlockchain);
-            }
-
             if (filters.PriorityLevel && filters.PriorityLevel.length > 0) {
                 const priorityPlaceholders = filters.PriorityLevel.map(() => '?').join(', ');
                 whereConditions.push(`PriorityLevel IN (${priorityPlaceholders})`);
@@ -408,74 +348,42 @@ export class JurnalEmailService {
     /**
      * Obține statistici pentru jurnalul de emailuri
      */
-    async getJurnalEmailStats(filters: Omit<JurnalEmailFilters, 'offset' | 'limit' | 'sortBy' | 'sortOrder'> = {}): Promise<JurnalEmailResponse> {
+    async getJurnalEmailStats(): Promise<JurnalEmailResponse> {
         try {
-            const whereConditions: string[] = [];
-            const params: any[] = [];
-
-            // Aplică aceleași filtre ca la getJurnalEmailuri (fără paginare)
-            if (filters.DataTrimitereStart) {
-                whereConditions.push('DataTrimitere >= ?');
-                params.push(filters.DataTrimitereStart);
-            }
-
-            if (filters.DataTrimitereEnd) {
-                whereConditions.push('DataTrimitere <= ?');
-                params.push(filters.DataTrimitereEnd);
-            }
-
-            // Adaugă alte filtre similar cu getJurnalEmailuri...
-
-            const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
-
+            const db = await getDatabase();
             const statsQuery = `
                 SELECT 
                     COUNT(*) as totalEmailuri,
                     SUM(CASE WHEN StatusTrimitere = 'SUCCESS' THEN 1 ELSE 0 END) as emailuriTrimise,
                     SUM(CASE WHEN StatusTrimitere = 'FAILED' THEN 1 ELSE 0 END) as emailuriEsuate,
                     SUM(CASE WHEN StatusTrimitere = 'PENDING' THEN 1 ELSE 0 END) as emailuriPending,
-                    SUM(CASE WHEN StatusTrimitere = 'RETRY' THEN 1 ELSE 0 END) as emailuriRetry,
-                    SUM(CASE WHEN StareBlockchain = 'CONFIRMED' THEN 1 ELSE 0 END) as emailuriBlockchainConfirmate,
-                    SUM(CASE WHEN StareBlockchain = 'PENDING' THEN 1 ELSE 0 END) as emailuriBlockchainPending,
-                    SUM(CASE WHEN StareBlockchain = 'FAILED' THEN 1 ELSE 0 END) as emailuriBlockchainEsuate
-                FROM JurnalEmail 
-                ${whereClause}
+                    SUM(CASE WHEN StatusTrimitere = 'RETRY' THEN 1 ELSE 0 END) as emailuriRetry
+                FROM JurnalEmail
             `;
-
-            const db = await getDatabase();
-            const result = await db.get(statsQuery, params);
-            const stats = result as JurnalEmailStats;
-
-            // Obține statistici pe tipuri de email
+            const result = await db.get(statsQuery);
             const tipStatsQuery = `
                 SELECT TipEmail, COUNT(*) as Count
                 FROM JurnalEmail 
-                ${whereClause}
                 GROUP BY TipEmail
             `;
-
-            const tipStatsResult = await db.all(tipStatsQuery, params);
+            const tipStatsResult = await db.all(tipStatsQuery);
             const statisticiTipEmail: { [key: string]: number } = {};
             tipStatsResult.forEach((row: any) => {
                 statisticiTipEmail[row.TipEmail] = row.Count;
             });
-
-            // Obține statistici pe prioritate
             const priorityStatsQuery = `
                 SELECT PriorityLevel, COUNT(*) as Count
                 FROM JurnalEmail 
-                ${whereClause}
                 GROUP BY PriorityLevel
             `;
-
-            const priorityStatsResult = await db.all(priorityStatsQuery, params);
+            const priorityStatsResult = await db.all(priorityStatsQuery);
             const statisticiPrioritate: { [key: string]: number } = {};
             priorityStatsResult.forEach((row: any) => {
                 statisticiPrioritate[row.PriorityLevel] = row.Count;
             });
 
             const finalStats: JurnalEmailStats = {
-                ...stats,
+                ...result,
                 statisticiTipEmail: statisticiTipEmail as any,
                 statisticiPrioritate: statisticiPrioritate as any
             };

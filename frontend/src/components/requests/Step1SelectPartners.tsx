@@ -47,8 +47,7 @@ export const Step1SelectPartners = ({
       <CardHeader>
         <CardTitle>1. Selectează Partenerii</CardTitle>
         <CardDescription>
-          Alege partenerii ACTIVI cărora vrei să le trimiți cererea de confirmare de sold.
-          Filtrează după categorie pentru a vedea doar partenerii din categoria dorită.
+          Sunt afișați doar partenerii ACTIVI.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

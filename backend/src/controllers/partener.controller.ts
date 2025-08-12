@@ -195,11 +195,25 @@ export class PartenerController {
                 res.status(400).json(ApiResponseHelper.validationError('cuiPartener', 'CUI-ul partenerului este obligatoriu'));
                 return;
             }
+            if (!partenerData.onrcPartener) {
+                res.status(400).json(ApiResponseHelper.validationError('onrcPartener', 'Nr. ONRC este obligatoriu'));
+                return;
+            }
 
             const newPartener = await partenerService.createPartener(partenerData);
-            
             res.status(201).json(ApiResponseHelper.success(newPartener, 'Partenerul a fost creat cu succes'));
         } catch (error) {
+            const msg = error instanceof Error ? error.message : '';
+            if (typeof msg === 'string') {
+                if (msg.startsWith('VALIDATION:')) {
+                    res.status(400).json(ApiResponseHelper.validationError('general', msg.replace('VALIDATION:', '')));
+                    return;
+                }
+                if (msg.startsWith('CONFLICT:')) {
+                    res.status(409).json(ApiResponseHelper.error(msg.replace('CONFLICT:', ''), 'CONFLICT'));
+                    return;
+                }
+            }
             console.error('Eroare la crearea partenerului:', error);
             res.status(500).json(ApiResponseHelper.error(
                 'Eroare la crearea partenerului',
@@ -248,14 +262,21 @@ export class PartenerController {
                 return;
             }
 
-            const deleted = await partenerService.deletePartener(id);
-            
-            if (!deleted) {
-                res.status(404).json(ApiResponseHelper.notFoundError('Partenerul'));
-                return;
+            try {
+                const deleted = await partenerService.deletePartener(id);
+                if (!deleted) {
+                    res.status(404).json(ApiResponseHelper.notFoundError('Partenerul'));
+                    return;
+                }
+                res.json(ApiResponseHelper.success(null, 'Partenerul a fost șters cu succes'));
+            } catch (err) {
+                const m = err instanceof Error ? err.message : '';
+                if (m.startsWith('REFERENCES:')) {
+                    res.status(409).json(ApiResponseHelper.error(m.replace('REFERENCES:', ''), 'REFERENCES'));
+                    return;
+                }
+                throw err;
             }
-
-            res.json(ApiResponseHelper.success(null, 'Partenerul a fost șters cu succes'));
         } catch (error) {
             console.error('Eroare la ștergerea partenerului:', error);
             res.status(500).json(ApiResponseHelper.error(
