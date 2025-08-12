@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 // Extended interface for sold request functionality
 interface SoldPartener extends Partener {
   selected: boolean;
-  partnerCategory: "client_duc" | "client_dl" | "furnizor_duc" | "furnizor_dl";
+  partnerCategory: "client_duc" | "client_dl" | "furnizor_duc" | "furnizor_dl"; // fallback implicit client_duc dacă niciun flag
   orderNumber?: number;
 }
 
@@ -59,6 +59,7 @@ export const useSoldSettings = () => {
   const [step, setStep] = useState(1);
   const [partnerCategory, setPartnerCategory] = useState<string>("all");
   const [partners, setPartners] = useState<SoldPartener[]>([]);
+  const [sortOptions, setSortOptions] = useState({ sortBy: 'numePartener', sortOrder: 'asc' as 'asc' | 'desc' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [date, setDate] = useState<Date | undefined>(new Date());
@@ -83,68 +84,67 @@ export const useSoldSettings = () => {
     const loadData = async () => {
       setLoading(true);
       setError(null);
-      
       try {
-        // Încarcă partenerii
-        const response = await partenerService.getAllParteneri();
-        
-        if (response.parteneri) {
-          const partnersWithSelection: SoldPartener[] = response.parteneri.map((partner: Partener) => ({
+        // Fetch unificat cu parametri standardizați
+        const response = await partenerService.getAllParteneri({
+          status: 'active',
+            partnerType: 'all',
+            limit: 1000,
+            sortBy: sortOptions.sortBy,
+            sortOrder: sortOptions.sortOrder
+        });
+        if (!response.parteneri) throw new Error('Eroare la încărcarea partenerilor');
+
+        const partnersWithSelection: SoldPartener[] = response.parteneri
+          .filter(p => p.partenerActiv === true) // filtrare suplimentară cerută
+          .map((partner: Partener) => ({
             ...partner,
             selected: false,
-            partnerCategory: determinePartnerCategory(partner)
+            partnerCategory: derivePartnerCategory(partner, 'client_duc') // fallback specific sold
           }));
-          
-          setPartners(partnersWithSelection);
-        } else {
-          throw new Error("Eroare la încărcarea partenerilor");
-        }
 
-        // Încarcă template-ul din baza de date pentru categoria "fise" 
+        // Sortare locală stabilă (după nume) pentru consistență vizuală
+        partnersWithSelection.sort((a, b) => a.numePartener.localeCompare(b.numePartener, 'ro', { sensitivity: 'base' }));
+        setPartners(partnersWithSelection);
+
+        // Template email
         console.log('🔍 Încărcare template pentru categoria "fise" din EmailSabloane...');
         try {
           const allTemplates = await templateService.getAllTemplates();
           const fiseTemplate = allTemplates.find(t => t.CategorieSablon === 'fise' && t.TipSablon === 'email');
-          
-          if (fiseTemplate && fiseTemplate.ContinutSablon) {
+          if (fiseTemplate?.ContinutSablon) {
             setEmailTemplate(fiseTemplate.ContinutSablon);
             setTemplateLoaded(true);
-            console.log('✅ Template pentru categoria "fise" încărcat din baza de date:', fiseTemplate.NumeSablon);
-            console.log('📄 Conținut template încărcat:', fiseTemplate.ContinutSablon.substring(0, 200) + '...');
           } else {
-            console.error('❌ Nu s-a găsit template pentru categoria "fise" în EmailSabloane!');
-            setError('Nu s-a găsit șablonul pentru categoria "fise" în baza de date. Vă rugăm să creați un șablon cu categoria "Fișe".');
+            setError('Nu s-a găsit șablonul pentru categoria "fise" (email).');
             setTemplateLoaded(false);
           }
         } catch (templateError) {
-          console.error('❌ Eroare la încărcarea template-ului din BD:', templateError);
-          setError('Eroare la încărcarea șablonului din baza de date: ' + (templateError instanceof Error ? templateError.message : 'Eroare necunoscută'));
+          setError('Eroare la încărcarea șablonului: ' + (templateError instanceof Error ? templateError.message : 'necunoscută'));
           setTemplateLoaded(false);
         }
-        
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Eroare necunoscută";
-        setError(`Eroare la încărcarea datelor: ${errorMessage}`);
-        console.error('Error loading data:', err);
+        const msg = err instanceof Error ? err.message : 'Eroare necunoscută';
+        setError(`Eroare la încărcarea datelor: ${msg}`);
       } finally {
         setLoading(false);
       }
     };
-
     loadData();
-  }, []);
+  }, [sortOptions]);
+
+  // Funcție comună derivare categorie (fallback parametrizat)
+  const derivePartnerCategory = (partner: Partener, fallback: 'client_duc' | 'client_dl' | 'other' = 'other'): "client_duc" | "client_dl" | "furnizor_duc" | "furnizor_dl" => {
+    if (partner.clientDUC) return 'client_duc';
+    if (partner.clientDL) return 'client_dl';
+    if (partner.furnizorDUC) return 'furnizor_duc';
+    if (partner.furnizorDL) return 'furnizor_dl';
+    // Sold: fallback definit în apel ('client_duc') => respectă cerința #3
+    return fallback === 'client_dl' ? 'client_dl' : 'client_duc';
+  };
 
   // Helper function to determine partner category
-  const determinePartnerCategory = (partner: Partener): "client_duc" | "client_dl" | "furnizor_duc" | "furnizor_dl" => {
-    // Determinăm categoria pe baza boolean-urilor
-    if (partner.clientDUC) return "client_duc";
-    if (partner.clientDL) return "client_dl";
-    if (partner.furnizorDUC) return "furnizor_duc";
-    if (partner.furnizorDL) return "furnizor_dl";
-    
-    // Default la client_dl dacă nu este setat explicit
-    return "client_dl";
-  };
+  // determinePartnerCategory înlocuit de derivePartnerCategory
 
   // Helper function to get partner type for display
   const getPartnerType = (partner: SoldPartener): string => {
@@ -416,7 +416,7 @@ export const useSoldSettings = () => {
     canProceedToStep2,
     canProceedToStep3,
     
-    // Functions
+  // Functions
     togglePartnerSelection,
     selectAllPartners,
     deselectAllPartners,
@@ -424,6 +424,8 @@ export const useSoldSettings = () => {
     handleGenerateOrderNumbers,
     handleSendEmails,
     resetAll,
-    getUserInfo
+  getUserInfo,
+  sortOptions,
+  setSortOptions
   };
 };

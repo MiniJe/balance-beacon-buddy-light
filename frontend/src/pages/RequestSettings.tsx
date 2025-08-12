@@ -69,12 +69,8 @@ const RequestSettings = () => {
         <h1 className="text-3xl font-bold">Trimite Cereri de Confirmare</h1>
       </div>
 
-      <Tabs defaultValue="wizard" className="w-full">
-        <TabsList>
-          <TabsTrigger value="wizard">Asistent Trimitere</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="wizard" className="space-y-4 mt-6">
+  {/* Eliminat tab-ul "Asistent Trimitere" (nu are rol activ) */}
+  <div className="space-y-4 mt-6">
           <StepProgress currentStep={step} onStepClick={handleStepNavigation} />
           
           {/* Step 1: Select Partners */}
@@ -146,8 +142,7 @@ const RequestSettings = () => {
               onSend={handleFinalizeSession}
             />
           )}
-        </TabsContent>
-      </Tabs>
+  </div>
     </div>
   );
 };

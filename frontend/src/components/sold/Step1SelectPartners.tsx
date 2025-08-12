@@ -1,11 +1,8 @@
-import React from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState, useMemo } from "react";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Users, Building2, Mail, CheckCircle2, Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { Users, Building2, Mail, ChevronRight } from "lucide-react";
 
 interface SoldPartener {
   idPartener: string;
@@ -23,213 +20,103 @@ interface SoldPartener {
 
 interface Step1SelectPartnersProps {
   partners: SoldPartener[];
+  loading?: boolean;
+  error?: string | null;
+  partnerCategory?: string;
   onPartnerToggle: (partnerId: string) => void;
   selectedCount: number;
   onSelectAll?: () => void;
   onDeselectAll?: () => void;
   onSelectByCategory?: (category: string) => void;
+  onNext?: () => void;
 }
 
 export const Step1SelectPartners: React.FC<Step1SelectPartnersProps> = ({
   partners,
+  loading = false,
+  error = null,
+  partnerCategory = 'all',
   onPartnerToggle,
   selectedCount,
   onSelectAll,
   onDeselectAll,
   onSelectByCategory,
+  onNext
 }) => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
-
-  // Filtrăm partenerii pe baza termenului de căutare și categoriei
-  const filteredPartners = partners.filter((partner) => {
-    const term = searchTerm.trim().toLowerCase();
-    const nume = (partner.numePartener || '').toLowerCase();
-    const cui = (partner.cuiPartener || '').toLowerCase();
-    const email = (partner.emailPartener || '').toLowerCase();
-
-    const matchesSearch = term.length === 0 ||
-      nume.includes(term) ||
-      cui.includes(term) ||
-      email.includes(term);
-
-    // Derivăm categoria efectivă (fallback dacă partner.partnerCategory nu este populat / diferă ca naming)
-    const derivedCategory = partner.partnerCategory || (
-      partner.clientDUC ? 'client_duc' :
-      partner.clientDL ? 'client_dl' :
-      partner.furnizorDUC ? 'furnizor_duc' :
-      partner.furnizorDL ? 'furnizor_dl' : 'other'
-    );
-
-    const matchesCategory =
-      categoryFilter === 'all' ||
-      derivedCategory === categoryFilter;
-
-    return matchesSearch && matchesCategory;
-  });
-
+  const [categoryFilter, setCategoryFilter] = useState<string>(partnerCategory || 'all');
+  const filteredPartners = useMemo(() => partners.filter(p => categoryFilter === 'all' || p.partnerCategory === categoryFilter), [partners, categoryFilter]);
+  const allFilteredSelected = filteredPartners.length > 0 && filteredPartners.every(p => p.selected);
   const getPartnerTypeDisplay = (partner: SoldPartener) => {
-    if (partner.clientDUC) return { type: "Client DUC", color: "bg-blue-100 text-blue-800" };
-    if (partner.clientDL) return { type: "Client DL", color: "bg-green-100 text-green-800" };
-    if (partner.furnizorDUC) return { type: "Furnizor DUC", color: "bg-purple-100 text-purple-800" };
-    if (partner.furnizorDL) return { type: "Furnizor DL", color: "bg-orange-100 text-orange-800" };
-    return { type: "Partener", color: "bg-gray-100 text-gray-800" };
+    if (partner.partnerCategory === 'client_duc') return { type: 'Client DUC', color: 'bg-blue-100 text-blue-800' };
+    if (partner.partnerCategory === 'client_dl') return { type: 'Client DL', color: 'bg-green-100 text-green-800' };
+    if (partner.partnerCategory === 'furnizor_duc') return { type: 'Furnizor DUC', color: 'bg-purple-100 text-purple-800' };
+    if (partner.partnerCategory === 'furnizor_dl') return { type: 'Furnizor DL', color: 'bg-orange-100 text-orange-800' };
+    return { type: 'Partener', color: 'bg-gray-100 text-gray-800' };
   };
-
   return (
-    <div className="space-y-6">
-      {/* Header cu statistici */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">Selectare Parteneri</h3>
-          <p className="text-sm text-gray-600">
-            Alegeți partenerii căror le veți trimite solicitarea pentru fișele partener
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="px-3 py-1">
-            <Users className="h-3 w-3 mr-1" />
-            {selectedCount} selectați
-          </Badge>
-        </div>
-      </div>
-
-      {/* Controale de selecție */}
-      <Card className="border-dashed">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium">Acțiuni Rapide</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Control select all (în locul butoanelor separate) */}
+    <Card>
+      <CardHeader>
+        <CardTitle>1. Selectează Partenerii</CardTitle>
+        <CardDescription>Sunt afișați doar partenerii ACTIVI.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {error && <div className="bg-destructive/15 text-destructive p-3 rounded-md text-sm">{error}</div>}
+        <div className="flex justify-between items-center">
           <div className="flex items-center space-x-2">
             <Checkbox
               id="selectAllSold"
-              checked={filteredPartners.length > 0 && filteredPartners.every(p => p.selected)}
-              onCheckedChange={(checked) => {
-                if (checked === true) {
-                  onSelectAll?.();
-                } else if (checked === false) {
-                  onDeselectAll?.();
-                }
-              }}
-              disabled={filteredPartners.length === 0}
+              checked={allFilteredSelected}
+              onCheckedChange={(checked) => { if (checked === true) onSelectAll?.(); else if (checked === false) onDeselectAll?.(); }}
+              disabled={loading || filteredPartners.length === 0}
             />
-            <label htmlFor="selectAllSold" className="text-sm text-gray-700 cursor-pointer select-none">
-              Selectează (toți din listă filtrată)
-            </label>
-            {selectedCount > 0 && (
-              <span className="text-xs text-gray-500 ml-2">{selectedCount} selectați</span>
-            )}
+            <label htmlFor="selectAllSold" className="text-sm">Selectează</label>
           </div>
-
-          {/* Filtre */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Căutare</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Căutați după nume, CUI sau email..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Categorie</label>
-              <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-              >
-                <option value="all">Toate categoriile</option>
-                <option value="client_duc">Clienți DUC</option>
-                <option value="client_dl">Clienți DL</option>
-                <option value="furnizor_duc">Furnizori DUC</option>
-                <option value="furnizor_dl">Furnizori DL</option>
-              </select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Lista parteneri */}
-      <div className="space-y-2 h-[60vh] overflow-y-scroll pr-1 rounded border bg-white">
-        {filteredPartners.length === 0 ? (
-          <Card className="p-6 text-center">
-            <div className="text-gray-500">
-              <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>Nu au fost găsiți parteneri care să corespundă criteriilor de căutare.</p>
-            </div>
-          </Card>
-        ) : (
-          filteredPartners.map((partner) => {
-            const typeInfo = getPartnerTypeDisplay(partner);
-            return (
-              <Card
-                key={partner.idPartener}
-                className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
-                  partner.selected ? "ring-2 ring-blue-500 bg-blue-50" : ""
-                }`}
-                onClick={() => onPartnerToggle(partner.idPartener)}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-center space-x-4">
-                    <Checkbox
-                      checked={partner.selected}
-                      onChange={() => onPartnerToggle(partner.idPartener)}
-                      className="mt-1"
-                    />
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-medium text-gray-900 truncate">
-                          {partner.numePartener}
-                        </h4>
-                        <Badge className={`text-xs ${typeInfo.color}`}>
-                          {typeInfo.type}
-                        </Badge>
-                      </div>
-                      
-                      <div className="flex items-center text-sm text-gray-600 space-x-4">
-                        <div className="flex items-center">
-                          <Building2 className="h-3 w-3 mr-1" />
-                          CUI: {partner.cuiPartener}
-                        </div>
-                        {partner.emailPartener && (
-                          <div className="flex items-center">
-                            <Mail className="h-3 w-3 mr-1" />
-                            {partner.emailPartener}
-                          </div>
-                        )}
-                      </div>
-                      
-                      {partner.reprezentantPartener && (
-                        <div className="text-sm text-gray-500 mt-1">
-                          Reprezentant: {partner.reprezentantPartener}
-                        </div>
-                      )}
+          <select
+            className="w-[200px] px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={categoryFilter}
+            onChange={(e) => { setCategoryFilter(e.target.value); onSelectByCategory?.(e.target.value); }}
+          >
+            <option value="all">Toate categoriile</option>
+            <option value="client_duc">Client DUC</option>
+            <option value="client_dl">Client DL</option>
+            <option value="furnizor_duc">Furnizor DUC</option>
+            <option value="furnizor_dl">Furnizor DL</option>
+          </select>
+        </div>
+        <div className="max-h-[400px] overflow-y-auto space-y-2">
+          {loading ? (
+            <div className="flex items-center justify-center py-8"><div className="text-center"><div className="animate-spin h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div><p className="text-muted-foreground">Se încarcă partenerii...</p></div></div>
+          ) : filteredPartners.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">{error ? 'Eroare la încărcarea partenerilor' : 'Nu există parteneri activi'}</p>
+          ) : (
+            filteredPartners.map(partner => {
+              const typeInfo = getPartnerTypeDisplay(partner);
+              return (
+                <div key={partner.idPartener} className="flex items-center justify-between p-3 hover:bg-accent rounded border">
+                  <div className="flex items-center space-x-3">
+                    <Checkbox id={`sold-partner-${partner.idPartener}`} checked={partner.selected} onCheckedChange={() => onPartnerToggle(partner.idPartener)} />
+                    <div>
+                      <label htmlFor={`sold-partner-${partner.idPartener}`} className="font-medium cursor-pointer">{partner.numePartener}</label>
+                      <p className="text-sm text-muted-foreground">CUI: {partner.cuiPartener}</p>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })
-        )}
-      </div>
-
-      {/* Footer cu statistici */}
-      {filteredPartners.length > 0 && (
-        <div className="text-center text-sm text-gray-600 pt-4 border-t">
-          Se afișează {filteredPartners.length} din {partners.length} parteneri
-          {selectedCount > 0 && (
-            <span className="font-medium text-blue-600 ml-2">
-              • {selectedCount} selectați
-            </span>
+                  <div className="flex items-center space-x-4">
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${typeInfo.color}`}>{typeInfo.type}</span>
+                    <span className="text-sm text-muted-foreground min-w-[150px] text-right">{partner.emailPartener || 'Fără email'}</span>
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
-      )}
-    </div>
+      </CardContent>
+      <CardFooter className="justify-between">
+        <div className="text-sm text-muted-foreground">Parteneri selectați: <strong className="text-foreground">{selectedCount}</strong></div>
+        {onNext && (
+          <Button onClick={onNext} disabled={selectedCount === 0}>Continuă <ChevronRight className="ml-2 h-4 w-4" /></Button>
+        )}
+      </CardFooter>
+    </Card>
   );
 };
+// end

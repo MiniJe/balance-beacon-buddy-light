@@ -11,7 +11,7 @@ import { useFileUpload } from "@/hooks/useFileUpload";
 // Extended interface for request functionality
 interface RequestPartener extends Partener {
   selected: boolean;
-  partnerCategory: "client_duc" | "client_dl" | "furnizor_duc" | "furnizor_dl";
+  partnerCategory: "client_duc" | "client_dl" | "furnizor_duc" | "furnizor_dl"; // fallback mapat la 'client_duc' pentru cei fără flag-uri
 }
 
 interface SesiuneCereri {
@@ -125,6 +125,7 @@ export const useRequestSettings = () => {
   const [step, setStep] = useState(1);
   const [partnerCategory, setPartnerCategory] = useState<string>("all");
   const [partners, setPartners] = useState<RequestPartener[]>([]);
+  const [sortOptions, setSortOptions] = useState({ sortBy: 'numePartener', sortOrder: 'asc' as 'asc' | 'desc' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [date, setDate] = useState<Date | undefined>(new Date());
@@ -146,55 +147,49 @@ export const useRequestSettings = () => {
 
   // Load partners on component mount
   useEffect(() => {
-  const loadPartners = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await partenerService.getAllParteneri({
-        status: 'active', // Doar partenerii activi
-        partnerType: 'all',
-        limit: 1000
-      });
-      
-      const transformedPartners: RequestPartener[] = response.parteneri
-        .filter(partner => partner.partenerActiv === true) // Filtrare suplimentară pentru siguranță
-        .map(partner => {
-          let partnerCategory: "client_duc" | "client_dl" | "furnizor_duc" | "furnizor_dl" = "client_duc";
-          
-          if (partner.clientDUC) {
-            partnerCategory = "client_duc";
-          } else if (partner.clientDL) {
-            partnerCategory = "client_dl";
-          } else if (partner.furnizorDUC) {
-            partnerCategory = "furnizor_duc";
-          } else if (partner.furnizorDL) {
-            partnerCategory = "furnizor_dl";
-          }
-          
-          return {
-            ...partner,
-            selected: false,
-            partnerCategory
-          };
+    const derivePartnerCategory = (partner: Partener): RequestPartener['partnerCategory'] => {
+      if (partner.clientDUC) return 'client_duc';
+      if (partner.clientDL) return 'client_dl';
+      if (partner.furnizorDUC) return 'furnizor_duc';
+      if (partner.furnizorDL) return 'furnizor_dl';
+      return 'client_duc'; // fallback standardizat
+    };
+    const loadPartners = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await partenerService.getAllParteneri({
+          status: 'active',
+          partnerType: 'all',
+          limit: 1000,
+          sortBy: sortOptions.sortBy,
+          sortOrder: sortOptions.sortOrder
         });
-      
-      setPartners(transformedPartners);
-    } catch (error) {
-      console.error("Eroare la încărcarea partenerilor:", error);
-      setError(error instanceof Error ? error.message : 'Eroare la încărcarea partenerilor');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+        const transformed: RequestPartener[] = response.parteneri
+          .filter(p => p.partenerActiv === true)
+          .map(p => ({
+            ...p,
+            selected: false,
+            partnerCategory: derivePartnerCategory(p)
+          }));
+        // sortare locală stabilă (după nume) pentru consistență
+        transformed.sort((a, b) => a.numePartener.localeCompare(b.numePartener, 'ro', { sensitivity: 'base' }));
+        setPartners(transformed);
+      } catch (error) {
+        console.error('Eroare la încărcarea partenerilor:', error);
+        setError(error instanceof Error ? error.message : 'Eroare la încărcarea partenerilor');
+      } finally {
+        setLoading(false);
+      }
+    };
     loadPartners();
-  }, []);
+  }, [sortOptions]);
 
   const selectedPartnersCount = partners.filter(p => p.selected).length;
-  const filteredPartners = partners.filter(partner => 
-    partner.partenerActiv === true && // Doar partenerii activi
-    (partnerCategory === "all" || partner.partnerCategory === partnerCategory)
+  const filteredPartners = partners.filter(partner =>
+    partner.partenerActiv === true && (partnerCategory === 'all' || partner.partnerCategory === partnerCategory)
   );
+  const totalParteneri = filteredPartners.length; // conform cerinței #6
   const allDocumentsUploaded = documentsGenerated.length > 0 && 
     documentsGenerated.every(doc => doc.status === "uploaded");
 
@@ -647,5 +642,8 @@ export const useRequestSettings = () => {
     handleResetWizard,
     handleStepNavigation,
     validateUploadedFiles // ✅ ADĂUGAT: funcție de validare hash-uri
+  ,sortOptions
+  ,setSortOptions
+  ,totalParteneri
   };
 };

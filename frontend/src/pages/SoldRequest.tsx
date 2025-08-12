@@ -117,9 +117,6 @@ export const SoldRequest: React.FC = () => {
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           Solicitare Fișe Partener
         </h1>
-        <p className="text-gray-600">
-          Trimiteți solicitări către parteneri pentru emiterea fișelor partener
-        </p>
       </div>
 
       {/* Error Alert */}
@@ -132,29 +129,6 @@ export const SoldRequest: React.FC = () => {
 
       {/* Main Card */}
       <Card className="shadow-lg">
-        <CardHeader className="border-b bg-gradient-to-r from-blue-50 to-indigo-50">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <Send className="h-5 w-5 text-blue-600" />
-                Configurare Solicitare
-              </CardTitle>
-              <CardDescription className="mt-1">
-                Configurați și trimiteți solicitări pentru fișe partener
-              </CardDescription>
-            </div>
-            {step > 1 && (
-              <Button
-                variant="outline"
-                onClick={handleReset}
-                className="text-sm"
-              >
-                Resetează
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-
         <CardContent className="p-6">
           {/* Step Progress */}
           <div className="mb-8">

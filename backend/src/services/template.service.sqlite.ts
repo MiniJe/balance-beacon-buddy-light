@@ -191,57 +191,7 @@ export class EmailTemplateService {
         }
     }
 
-    /**
-     * Procesează un șablon cu datele partenerului
-     */
-    static async processTemplate(idSablon: string, partnerData: any): Promise<string> {
-        try {
-            const template = await this.getTemplateById(idSablon);
-            if (!template) {
-                throw new Error(`Șablonul ${idSablon} nu a fost găsit`);
-            }
-
-            let processedContent = template.ContinutSablon;
-
-            // Helper pentru prima valoare definită / non goală
-            const pick = (...vals: any[]) => vals.find(v => v !== undefined && v !== null && String(v).trim() !== '') ?? '';
-
-            // Construim map generic de token -> valoare
-            const tokenValues: Record<string,string> = {
-                'NUME_PARTENER': pick(partnerData.numePartener, partnerData.nume, 'Nume necunoscut'),
-                'CUI_PARTENER': pick(partnerData.cuiPartener, partnerData.cui, 'CUI necunoscut'),
-                'EMAIL_PARTENER': pick(partnerData.emailPartener, partnerData.email, 'Email necunoscut'),
-                'TELEFON_PARTENER': pick(partnerData.telefonPartener, partnerData.telefon, 'Telefon necunoscut'),
-                'ADRESA_PARTENER': pick(partnerData.adresaPartener, partnerData.adresa, 'Adresă necunoscută'),
-                'REPREZENTANT_PARTENER': pick(partnerData.reprezentantPartener, partnerData.reprezentant, 'Reprezentant necunoscut'),
-                'DATA_CURENTA': pick(partnerData.dataActuala, new Date().toLocaleDateString('ro-RO')),
-                'SOLD_CURENT': pick(partnerData.soldCurent, '0'),
-                'MONEDA': pick(partnerData.moneda, 'RON'),
-                'PERIOADA_CONFIRMARE': pick(partnerData.perioadaConfirmare, partnerData.dataSold, partnerData.PERIOADA, ''),
-                // Aliasuri suplimentare folosite în șabloane existente
-                'PERIOADA': pick(partnerData.dataSold, partnerData.perioadaConfirmare, ''),
-                'NUME_COMPANIE': pick(partnerData.numeCompanie, process.env.NUME_COMPANIE, 'Compania Noastră'),
-                'DATA': pick(partnerData.dataActuala, new Date().toLocaleDateString('ro-RO'))
-            };
-
-            // Pentru fiecare token înlocuim atât {TOKEN} cât și [TOKEN]
-            for (const [token, value] of Object.entries(tokenValues)) {
-                const safeVal = String(value);
-                const patterns = [
-                    new RegExp('\\{' + token.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&') + '\\}', 'g'),
-                    new RegExp('\\[' + token.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&') + '\\]', 'g')
-                ];
-                patterns.forEach(rx => {
-                    processedContent = processedContent.replace(rx, safeVal);
-                });
-            }
-
-            return processedContent;
-        } catch (error) {
-            console.error('❌ Eroare la procesarea șablonului:', error);
-            throw error;
-        }
-    }
+    // ...existing code...
 
     /**
      * Obține șabloanele după categorie
@@ -299,7 +249,7 @@ export class EmailTemplateService {
 
             return result;
         } catch (error) {
-            console.error('❌ Eroare la căutarea șabloanelor:', error);
+            console.error('❌ Eroare la căutarea șablanelor:', error);
             throw error;
         }
     }
@@ -469,28 +419,7 @@ export class EmailTemplateController {
         }
     }
 
-    /**
-     * POST /api/templates/:id/process
-     */
-    async processTemplate(req: Request, res: Response): Promise<void> {
-        try {
-            const { id } = req.params;
-            const partnerData = req.body;
-            
-            const processedContent = await EmailTemplateService.processTemplate(id, partnerData);
-            
-            res.json({
-                success: true,
-                data: { processedContent }
-            });
-        } catch (error) {
-            console.error('❌ Eroare controller processTemplate:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Eroare la procesarea șablonului'
-            });
-        }
-    }
+    // ...existing code...
 
     /**
      * GET /api/templates/category/:category
@@ -509,7 +438,7 @@ export class EmailTemplateController {
             console.error('❌ Eroare controller getTemplatesByCategory:', error);
             res.status(500).json({
                 success: false,
-                error: 'Eroare la obținerea șabloanelor după categorie'
+                error: 'Eroare la obținerea șablonelor după categorie'
             });
         }
     }
