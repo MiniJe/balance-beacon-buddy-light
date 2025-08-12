@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { ContabilService } from '../services/contabil.service';
+import { ContabilSQLiteService } from '../services/contabil.sqlite.service';
 import { EmailService } from '../services/email.service';
 import { creareContabilService } from '../services/creare.cont.contabil';
 import { ApiResponseHelper } from '../types/api.types';
@@ -68,7 +69,18 @@ class ContabilController {
             }
 
             console.log('✅ User is MASTER, fetching contabili list...');
-            const contabili = await contabilService.getAllContabili();
+            let contabili;
+            if (process.env.DB_MODE === 'sqlite') {
+                try {
+                    contabili = await ContabilSQLiteService.getAllContabili();
+                    console.log('📦 SQLite contabili count:', contabili.length);
+                } catch (e) {
+                    console.error('❌ Eroare SQLite getAllContabili, fallback la serviciul Azure:', e);
+                    contabili = await contabilService.getAllContabili();
+                }
+            } else {
+                contabili = await contabilService.getAllContabili();
+            }
             console.log(`📋 Found ${contabili.length} contabili`);
             
             // Verifică prezența ID-urilor corecte
