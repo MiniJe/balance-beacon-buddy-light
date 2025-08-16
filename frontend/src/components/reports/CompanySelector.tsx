@@ -1,5 +1,3 @@
-
-import React from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2, TrendingUp, Clock, CheckCircle } from "lucide-react";
 import { Company } from "@/types/request";

@@ -32,6 +32,7 @@ export interface EmailData {
     // Opțiuni pentru tracking
     enableTracking?: boolean;
     idJurnalEmail?: string; // ID-ul înregistrării din JurnalEmail pentru tracking
+    emailTypeHint?: 'CONFIRMARE' | 'REMINDER' | 'TEST' | 'GENERAL';
 }
 
 export class EmailService {
@@ -143,18 +144,51 @@ export class EmailService {
                 }
             }
 
-            // Adaugă tracking pixel dacă este activat
-            if (emailData.enableTracking && emailData.idJurnalEmail && mailOptions.html) {
+            // Adaugă butoane + pixel automat dacă tracking este activ și avem HTML
+            if (emailData.enableTracking && mailOptions.html) {
                 const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
-                const trackingPixel = EmailTrackingService.generateTrackingPixel(
-                    emailData.idJurnalEmail, 
-                    baseUrl
-                );
-                
-                // Adaugă pixel-ul la sfârșitul conținutului HTML
-                mailOptions.html += trackingPixel;
-                
-                console.log(`📊 Tracking pixel adăugat pentru email ${emailData.idJurnalEmail}`);
+                // Dacă nu avem deja IdJurnalEmail, creăm o înregistrare PENDING pentru a lega token-urile de ea
+                if (!emailData.idJurnalEmail) {
+                    try {
+                        const createPayload: CreateJurnalEmailRequest = {
+                            EmailDestinatar: Array.isArray(mailOptions.to) ? mailOptions.to.join(', ') : (mailOptions.to as string),
+                            SubiectEmail: mailOptions.subject,
+                            ContinutEmail: mailOptions.html,
+                            TipEmail: this.mapEmailTypeToTipEmail(emailData.emailTypeHint || 'GENERAL'),
+                            CreatDe: 'SISTEM',
+                            // Informații suplimentare utile dacă există
+                            NumeExpeditor: this.emailSettings.NumeExpeditor,
+                            EmailExpeditor: this.emailSettings.EmailExpeditor,
+                            EmailCC: Array.isArray(mailOptions.cc) ? mailOptions.cc.join(', ') : (mailOptions.cc as string | undefined),
+                            EmailBCC: Array.isArray(mailOptions.bcc) ? mailOptions.bcc.join(', ') : (mailOptions.bcc as string | undefined),
+                            EmailReplyTo: mailOptions.replyTo,
+                            MaximIncercari: 3
+                        };
+                        const created = await jurnalEmailService.createJurnalEmail(createPayload);
+                        if (created.success && created.data) {
+                            emailData.idJurnalEmail = (created.data as any).IdJurnalEmail;
+                            console.log(`🪪 Creat JurnalEmail PENDING pentru tracking: ${emailData.idJurnalEmail}`);
+                        }
+                    } catch (preErr) {
+                        console.warn('⚠️  Nu am putut crea JurnalEmail înainte de trimitere (continui fără tracking legat):', preErr);
+                    }
+                }
+
+                if (emailData.idJurnalEmail) {
+                    // Butoane de confirmare
+                    const actionButtons = await EmailTrackingService.generateActionButtons(
+                        emailData.idJurnalEmail,
+                        baseUrl
+                    );
+                    mailOptions.html += actionButtons;
+                    const trackingPixel = EmailTrackingService.generateTrackingPixel(
+                        emailData.idJurnalEmail, 
+                        baseUrl
+                    );
+                    // Adaugă pixel-ul la sfârșitul conținutului HTML
+                    mailOptions.html += trackingPixel;
+                    console.log(`📊 Tracking acțiuni + pixel adăugate pentru email ${emailData.idJurnalEmail}`);
+                }
             }
 
             // Trimite email-ul
@@ -324,6 +358,28 @@ export class EmailService {
         templateMeta?: any;
     }): Promise<void> {
         try {
+            // Dacă avem deja un IdJurnalEmail (creat anterior pentru tracking), doar actualizăm acea înregistrare
+            if (logData.idJurnalEmail) {
+                try {
+                    await jurnalEmailService.updateJurnalEmail({
+                        IdJurnalEmail: logData.idJurnalEmail,
+                        StatusTrimitere: logData.status,
+                        MesajEroare: logData.error,
+                        IdMessageEmail: logData.messageId || undefined,
+                        DataUltimaIncercare: new Date(),
+                        ModificatDe: logData.createdBy || 'SISTEM'
+                    });
+                    if (logData.trackingEnabled) {
+                        const db = await getDatabase();
+                        await db.run(`UPDATE JurnalEmail SET TrackingEnabled = 1 WHERE IdJurnalEmail = ?`, [logData.idJurnalEmail]);
+                    }
+                    console.log(`📝 Actualizat JurnalEmail existent: ${logData.idJurnalEmail}`);
+                    return; // am terminat
+                } catch (updErr) {
+                    console.warn('⚠️  Nu am putut actualiza JurnalEmail existent, încerc creare nouă:', updErr);
+                }
+            }
+
             // Construcție payload Atasamente (poate conține și meta despre șablon)
             let attachmentsPayload: string | undefined = undefined;
             try {
@@ -499,6 +555,48 @@ export class EmailService {
                 replyTo: emailData.replyTo || this.emailSettings?.RaspundeLa,
                 attachments: emailData.attachments
             };
+
+            // Înainte de trimitere, dacă se dorește tracking și avem HTML, generăm butoane+pixel
+            let idJurnalEmailForTracking: string | undefined = emailData.idJurnalEmail;
+            if ((emailData.enableTracking || logData?.confirmationRequestId) && mailOptions.html) {
+                const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
+                if (!idJurnalEmailForTracking) {
+                    try {
+                        const created = await jurnalEmailService.createJurnalEmail({
+                            EmailDestinatar: Array.isArray(mailOptions.to) ? mailOptions.to.join(', ') : (mailOptions.to as string),
+                            SubiectEmail: mailOptions.subject,
+                            ContinutEmail: mailOptions.html,
+                            TipEmail: this.mapEmailTypeToTipEmail(logData?.emailType || 'CONFIRMARE'),
+                            CreatDe: logData?.createdBy || 'SISTEM',
+                            IdPartener: logData?.partnerId,
+                            IdSablon: logData?.templateId,
+                            IdLot: logData?.batchId,
+                            IdCerereConfirmare: logData?.confirmationRequestId,
+                            NumeExpeditor: this.emailSettings?.NumeExpeditor,
+                            EmailExpeditor: this.emailSettings?.EmailExpeditor,
+                            NumeDestinatar: logData?.recipientName,
+                            TipDestinatar: logData?.recipientType,
+                            EmailCC: Array.isArray(mailOptions.cc) ? mailOptions.cc.join(', ') : (mailOptions.cc as string | undefined),
+                            EmailBCC: Array.isArray(mailOptions.bcc) ? mailOptions.bcc.join(', ') : (mailOptions.bcc as string | undefined),
+                            EmailReplyTo: mailOptions.replyTo,
+                            MaximIncercari: 3
+                        });
+                        if (created.success && created.data) {
+                            idJurnalEmailForTracking = (created.data as any).IdJurnalEmail;
+                            emailData.idJurnalEmail = idJurnalEmailForTracking;
+                            console.log(`🪪 Creat JurnalEmail PENDING pentru tracking (attach): ${idJurnalEmailForTracking}`);
+                        }
+                    } catch (e) {
+                        console.warn('⚠️  Nu am putut crea JurnalEmail înainte de trimitere (attach):', e);
+                    }
+                }
+                if (idJurnalEmailForTracking) {
+                    const buttons = await EmailTrackingService.generateActionButtons(idJurnalEmailForTracking, baseUrl);
+                    const pixel = EmailTrackingService.generateTrackingPixel(idJurnalEmailForTracking, baseUrl);
+                    mailOptions.html = (mailOptions.html || '') + buttons + pixel;
+                    console.log(`📊 Tracking acțiuni + pixel adăugate (attach) pentru email ${idJurnalEmailForTracking}`);
+                }
+            }
 
             const info = await this.transporter.sendMail(mailOptions);
             

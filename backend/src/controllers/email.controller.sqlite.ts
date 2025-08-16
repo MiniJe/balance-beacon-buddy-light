@@ -161,7 +161,7 @@ export class EmailController {
     // Trimite un email simplu
     async sendEmail(req: Request, res: Response): Promise<void> {
         try {
-            const { to, cc, bcc, subject, text, html, replyTo } = req.body;
+            const { to, cc, bcc, subject, text, html, replyTo, enableTracking, idJurnalEmail, emailTypeHint } = req.body;
             
             if (!to || !subject) {
                 res.status(400).json(ApiResponseHelper.validationError('to|subject', 'Adresa de email și subiectul sunt obligatorii'));
@@ -175,7 +175,10 @@ export class EmailController {
                 subject,
                 text,
                 html,
-                replyTo
+                replyTo,
+                enableTracking,
+                idJurnalEmail,
+                emailTypeHint
             };
 
             const result = await emailService.sendEmail(emailData);
@@ -206,7 +209,7 @@ export class EmailController {
     // Trimite email cu atașament
     async sendEmailWithAttachment(req: Request, res: Response): Promise<void> {
         try {
-            const { to, cc, bcc, subject, text, html, replyTo, attachmentPath, attachmentName } = req.body;
+            const { to, cc, bcc, subject, text, html, replyTo, attachmentPath, attachmentName, enableTracking, idJurnalEmail, emailTypeHint } = req.body;
             
             if (!to || !subject || !attachmentPath) {
                 res.status(400).json(ApiResponseHelper.validationError(
@@ -224,6 +227,9 @@ export class EmailController {
                 text,
                 html,
                 replyTo,
+                enableTracking,
+                idJurnalEmail,
+                emailTypeHint,
                 attachments: [{
                     filename: attachmentName || 'attachment',
                     path: attachmentPath

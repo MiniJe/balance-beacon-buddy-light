@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2, Shield, User, Mail, Phone, Building, Briefcase, Calendar } from 'lucide-react';
+import { Loader2, Shield, User, Mail, Building, Briefcase } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

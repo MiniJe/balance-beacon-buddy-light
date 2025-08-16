@@ -1,4 +1,4 @@
-import { Partener, PartenerFormData, PartenerApiResponse, SinglePartenerApiResponse, PartenerListResponse, PaginationInfo } from '../types/partener';
+import { Partener, PartenerFormData, PartenerApiResponse, SinglePartenerApiResponse, PartenerListResponse } from '../types/partener';
 
 class PartenerService {
     private baseUrl = '/api/parteneri';

@@ -1,8 +1,7 @@
 
-import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Clock, DollarSign, User } from "lucide-react";
+import { Clock, DollarSign } from "lucide-react";
 import { ConfirmationRequest, KanbanColumn } from "@/types/request";
 // Ensure correct paths for ui components and utils
 import { Badge } from "@/components/ui/badge"; 

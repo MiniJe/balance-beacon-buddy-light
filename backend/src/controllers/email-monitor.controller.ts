@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { emailMonitorService, EmailMonitorService } from '../services/email-monitor.service';
-import { pool } from '../config/azure';
+import { getDatabase } from '../config/sqlite';
 
 export class EmailMonitorController {
 
@@ -72,14 +72,8 @@ export class EmailMonitorController {
      */
     async checkNow(req: Request, res: Response): Promise<void> {
         try {
-            // Implementează verificarea manuală prin apelarea directă a metodei private
-            // Pentru aceasta, va trebui să fac metoda publică în serviciu
-            
-            res.json({
-                success: true,
-                message: 'Verificarea manuală a fost inițiată'
-            });
-
+            const processed = await emailMonitorService.checkForNewEmails();
+            res.json({ success: true, processed });
         } catch (error) {
             console.error('❌ Eroare la verificarea manuală:', error);
             res.status(500).json({
@@ -95,49 +89,44 @@ export class EmailMonitorController {
      */
     async getResponseStats(req: Request, res: Response): Promise<void> {
         try {
-            const result = await pool.request().query(`
+            const db = await getDatabase();
+            const row = await db.get(`
                 SELECT 
                     COUNT(*) as TotalEmailuriTrimise,
-                    COUNT(CASE WHEN DataRaspuns IS NOT NULL THEN 1 END) as EmailuriCuRaspuns,
-                    COUNT(CASE WHEN TipRaspuns = 'CONFIRMED' THEN 1 END) as RaspunsuriConfirmate,
-                    COUNT(CASE WHEN TipRaspuns = 'DISPUTED' THEN 1 END) as RaspunsuriContestate,
-                    COUNT(CASE WHEN TipRaspuns = 'CORRECTIONS' THEN 1 END) as RaspunsuriCorecții,
-                    COUNT(CASE WHEN TipRaspuns = 'GENERAL_RESPONSE' THEN 1 END) as RaspunsuriGenerale,
-                    COUNT(CASE WHEN StatusTrimitere = 'RESPONDED' THEN 1 END) as EmailuriRaspunse,
+                    SUM(CASE WHEN DataRaspuns IS NOT NULL THEN 1 ELSE 0 END) as EmailuriCuRaspuns,
+                    SUM(CASE WHEN TipRaspuns = 'CONFIRMED' THEN 1 ELSE 0 END) as RaspunsuriConfirmate,
+                    SUM(CASE WHEN TipRaspuns = 'DISPUTED' THEN 1 ELSE 0 END) as RaspunsuriContestate,
+                    SUM(CASE WHEN TipRaspuns = 'CORRECTIONS' THEN 1 ELSE 0 END) as RaspunsuriCorectii,
+                    SUM(CASE WHEN TipRaspuns = 'GENERAL_RESPONSE' THEN 1 ELSE 0 END) as RaspunsuriGenerale,
+                    SUM(CASE WHEN StatusTrimitere = 'RESPONDED' THEN 1 ELSE 0 END) as EmailuriRaspunse,
                     
-                    -- Calculează rata de răspuns
-                    CASE 
-                        WHEN COUNT(*) > 0 THEN 
-                            ROUND(CAST(COUNT(CASE WHEN DataRaspuns IS NOT NULL THEN 1 END) AS FLOAT) / COUNT(*) * 100, 2)
-                        ELSE 0 
-                    END as RataRaspuns,
-                    
-                    -- Timpul mediu de răspuns în ore
-                    AVG(CASE 
-                        WHEN DataRaspuns IS NOT NULL AND DataTrimitere IS NOT NULL THEN 
-                            DATEDIFF(hour, DataTrimitere, DataRaspuns)
-                        ELSE NULL 
-                    END) as TimpMediuRaspunsOre
-                    
-                FROM JurnalEmail 
-                WHERE DataTrimitere >= DATEADD(day, -30, GETDATE())
-                AND TipEmail IN ('CONFIRMARE', 'REMINDER')
+                    -- Timp mediu răspuns în ore
+                    AVG(
+                        CASE WHEN DataRaspuns IS NOT NULL AND DataTrimitere IS NOT NULL THEN
+                            (julianday(DataRaspuns) - julianday(DataTrimitere)) * 24.0
+                        ELSE NULL END
+                    ) as TimpMediuRaspunsOre
+                FROM JurnalEmail
+                WHERE datetime(DataTrimitere) >= datetime('now','-30 days')
+                  AND TipEmail IN ('CONFIRMARE', 'REMINDER')
             `);
 
-            const stats = result.recordset[0];
+            const total = row?.TotalEmailuriTrimise || 0;
+            const cuRaspuns = row?.EmailuriCuRaspuns || 0;
+            const rata = total > 0 ? Math.round((cuRaspuns / total) * 10000) / 100 : 0;
 
             res.json({
                 success: true,
                 stats: {
-                    totalEmailuriTrimise: stats.TotalEmailuriTrimise,
-                    emailuriCuRaspuns: stats.EmailuriCuRaspuns,
-                    rataRaspuns: stats.RataRaspuns,
-                    timpMediuRaspunsOre: stats.TimpMediuRaspunsOre,
+                    totalEmailuriTrimise: total,
+                    emailuriCuRaspuns: cuRaspuns,
+                    rataRaspuns: rata,
+                    timpMediuRaspunsOre: row?.TimpMediuRaspunsOre ?? null,
                     distributieRaspunsuri: {
-                        confirmate: stats.RaspunsuriConfirmate,
-                        contestate: stats.RaspunsuriContestate,
-                        corecții: stats.RaspunsuriCorecții,
-                        generale: stats.RaspunsuriGenerale
+                        confirmate: row?.RaspunsuriConfirmate || 0,
+                        contestate: row?.RaspunsuriContestate || 0,
+                        corectii: row?.RaspunsuriCorectii || 0,
+                        generale: row?.RaspunsuriGenerale || 0
                     }
                 }
             });
@@ -157,43 +146,44 @@ export class EmailMonitorController {
      */
     async getOrphanResponses(req: Request, res: Response): Promise<void> {
         try {
-            const { limit = 50, offset = 0 } = req.query;
+            const { limit = '50', offset = '0' } = req.query as any;
+            const db = await getDatabase();
+            // Dacă tabela nu există, returnează gol
+            const cols = await db.all(`PRAGMA table_info(EmailRaspunsuriOrphan)`);
+            if (!cols || cols.length === 0) {
+                res.json({ success: true, data: [], pagination: { total: 0, limit: parseInt(limit), offset: parseInt(offset) } });
+                return;
+            }
 
-            const result = await pool.request()
-                .input('Limit', parseInt(limit as string))
-                .input('Offset', parseInt(offset as string))
-                .query(`
-                    SELECT 
-                        Id,
-                        FromAddress,
-                        Subject,
-                        Content,
-                        ReceivedDate,
-                        InReplyTo,
-                        IsProcessed,
-                        ProcessedDate,
-                        ProcessedBy,
-                        ProcessingNotes
-                    FROM EmailRaspunsuriOrphan
-                    WHERE IsProcessed = 0
-                    ORDER BY ReceivedDate DESC
-                    OFFSET @Offset ROWS
-                    FETCH NEXT @Limit ROWS ONLY
-                `);
-
-            const countResult = await pool.request().query(`
-                SELECT COUNT(*) as Total 
-                FROM EmailRaspunsuriOrphan 
+            const data = await db.all(`
+                SELECT 
+                    Id,
+                    FromAddress,
+                    Subject,
+                    Content,
+                    ReceivedDate,
+                    InReplyTo,
+                    IsProcessed,
+                    ProcessedDate,
+                    ProcessedBy,
+                    ProcessingNotes
+                FROM EmailRaspunsuriOrphan
                 WHERE IsProcessed = 0
+                ORDER BY datetime(ReceivedDate) DESC
+                LIMIT ? OFFSET ?
+            `, [parseInt(limit), parseInt(offset)]);
+
+            const countRow = await db.get(`
+                SELECT COUNT(*) as Total FROM EmailRaspunsuriOrphan WHERE IsProcessed = 0
             `);
 
             res.json({
                 success: true,
-                data: result.recordset,
+                data,
                 pagination: {
-                    total: countResult.recordset[0].Total,
-                    limit: parseInt(limit as string),
-                    offset: parseInt(offset as string)
+                    total: countRow?.Total || 0,
+                    limit: parseInt(limit),
+                    offset: parseInt(offset)
                 }
             });
 
@@ -215,22 +205,24 @@ export class EmailMonitorController {
             const { id } = req.params;
             const { linkedToEmailId, processingNotes } = req.body;
             const userId = (req as any).user?.id || 'UNKNOWN';
+            const db = await getDatabase();
 
-            await pool.request()
-                .input('Id', id)
-                .input('LinkedToEmailId', linkedToEmailId || null)
-                .input('ProcessingNotes', processingNotes || null)
-                .input('ProcessedBy', userId)
-                .query(`
-                    UPDATE EmailRaspunsuriOrphan
-                    SET 
-                        IsProcessed = 1,
-                        ProcessedDate = GETDATE(),
-                        ProcessedBy = @ProcessedBy,
-                        LinkedToEmailId = @LinkedToEmailId,
-                        ProcessingNotes = @ProcessingNotes
-                    WHERE Id = @Id
-                `);
+            await db.run(`
+                UPDATE EmailRaspunsuriOrphan
+                SET 
+                    IsProcessed = 1,
+                    ProcessedDate = ?,
+                    ProcessedBy = ?,
+                    LinkedToEmailId = ?,
+                    ProcessingNotes = ?
+                WHERE Id = ?
+            `, [
+                new Date().toISOString(),
+                userId,
+                linkedToEmailId || null,
+                processingNotes || null,
+                id
+            ]);
 
             res.json({
                 success: true,
@@ -252,35 +244,36 @@ export class EmailMonitorController {
      */
     async getRecentResponses(req: Request, res: Response): Promise<void> {
         try {
-            const { days = 7, limit = 20 } = req.query;
-
-            const result = await pool.request()
-                .input('Days', parseInt(days as string))
-                .input('Limit', parseInt(limit as string))
-                .query(`
-                    SELECT TOP (@Limit)
-                        IdJurnalEmail,
-                        EmailDestinatar,
-                        NumeDestinatar,
-                        SubiectEmail,
-                        DataTrimitere,
-                        DataRaspuns,
-                        TipRaspuns,
-                        RaspunsEmail,
-                        StatusTrimitere,
-                        TipEmail,
-                        PriorityLevel,
-                        DATEDIFF(hour, DataTrimitere, DataRaspuns) as TimpRaspunsOre
-                    FROM JurnalEmail
-                    WHERE DataRaspuns IS NOT NULL
-                    AND DataRaspuns >= DATEADD(day, -@Days, GETDATE())
-                    ORDER BY DataRaspuns DESC
-                `);
+            const { days = '7', limit = '20' } = req.query as any;
+            const db = await getDatabase();
+            const data = await db.all(`
+                SELECT 
+                    IdJurnalEmail,
+                    EmailDestinatar,
+                    NumeDestinatar,
+                    SubiectEmail,
+                    DataTrimitere,
+                    DataRaspuns,
+                    TipRaspuns,
+                    RaspunsEmail,
+                    StatusTrimitere,
+                    TipEmail,
+                    PriorityLevel,
+                    ((julianday(DataRaspuns) - julianday(DataTrimitere)) * 24.0) as TimpRaspunsOre
+                FROM JurnalEmail
+                WHERE DataRaspuns IS NOT NULL
+                  AND datetime(DataRaspuns) >= datetime('now', ?)
+                ORDER BY datetime(DataRaspuns) DESC
+                LIMIT ?
+            `, [
+                `-${parseInt(days)} days`,
+                parseInt(limit)
+            ]);
 
             res.json({
                 success: true,
-                data: result.recordset,
-                message: `Găsite ${result.recordset.length} răspunsuri din ultimele ${days} zile`
+                data,
+                message: `Găsite ${data.length} răspunsuri din ultimele ${days} zile`
             });
 
         } catch (error) {

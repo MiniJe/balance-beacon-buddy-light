@@ -1,11 +1,7 @@
 import { Request, Response } from 'express';
-import { ContabilService } from '../services/contabil.service';
 import { ContabilSQLiteService } from '../services/contabil.sqlite.service';
 import { EmailService } from '../services/email.service';
-import { creareContabilService } from '../services/creare.cont.contabil';
 import { ApiResponseHelper } from '../types/api.types';
-
-const contabilService = new ContabilService();
 
 class ContabilController {
     private emailService: EmailService;
@@ -36,7 +32,7 @@ class ContabilController {
             }
 
             console.log('✅ Creating new contabil...');
-            const contabil = await creareContabilService.createContabil(contabilData);
+            const contabil = await ContabilSQLiteService.createContabil(contabilData, this.emailService);
             console.log('✅ Contabil created successfully:', contabil.IdContabil);
             
             res.status(201).json(ApiResponseHelper.success(contabil, 'Contabil creat cu succes'));
@@ -69,18 +65,7 @@ class ContabilController {
             }
 
             console.log('✅ User is MASTER, fetching contabili list...');
-            let contabili;
-            if (process.env.DB_MODE === 'sqlite') {
-                try {
-                    contabili = await ContabilSQLiteService.getAllContabili();
-                    console.log('📦 SQLite contabili count:', contabili.length);
-                } catch (e) {
-                    console.error('❌ Eroare SQLite getAllContabili, fallback la serviciul Azure:', e);
-                    contabili = await contabilService.getAllContabili();
-                }
-            } else {
-                contabili = await contabilService.getAllContabili();
-            }
+            const contabili = await ContabilSQLiteService.getAllContabili();
             console.log(`📋 Found ${contabili.length} contabili`);
             
             // Verifică prezența ID-urilor corecte
@@ -114,7 +99,7 @@ class ContabilController {
                 return;
             }
 
-            const contabil = await contabilService.getContabilById(contabilId);
+            const contabil = await ContabilSQLiteService.getContabilById(contabilId);
             if (!contabil) {
                 res.status(404).json(ApiResponseHelper.notFoundError('Contabilul'));
                 return;
@@ -154,7 +139,7 @@ class ContabilController {
             }
 
             // Update the contabil with the new permissions
-            await contabilService.updateContabil(contabilId, { PermisiuniAcces: permisiuni });
+            await ContabilSQLiteService.updateContabil(contabilId, { PermisiuniAcces: permisiuni } as any);
             res.json(ApiResponseHelper.success(null, 'Permisiunile contabilului au fost actualizate cu succes'));
         } catch (error: any) {
             if (error.message === 'Contabilul nu există') {
@@ -191,7 +176,7 @@ class ContabilController {
                 res.status(400).json(ApiResponseHelper.validationError('active', 'Statusul activ/inactiv trebuie să fie de tip boolean'));
                 return;
             }            // For status change, we need to use updateContabil with StatusContabil property
-            await contabilService.updateContabil(contabilId, { StatusContabil: active ? 'Activ' : 'Inactiv' });
+            await ContabilSQLiteService.setStatus(contabilId, active);
             res.json(ApiResponseHelper.success(null, `Contabilul a fost ${active ? 'activat' : 'dezactivat'} cu succes`));
         } catch (error) {
             console.error('Eroare la modificarea statusului contabilului:', error);
@@ -218,7 +203,7 @@ class ContabilController {
                 return;
             }
 
-            await creareContabilService.resetPassword(contabilId);
+            await ContabilSQLiteService.resetPassword(contabilId, this.emailService);
             res.json(ApiResponseHelper.success(null, 'Parola contabilului a fost resetată cu succes și trimisă pe email'));
         } catch (error: any) {
             if (error.message === 'Contabilul nu există') {
@@ -264,7 +249,7 @@ class ContabilController {
             }
 
             console.log('✅ Updating contabil...');
-            const updatedContabil = await contabilService.updateContabil(contabilId, updateData);
+            const updatedContabil = await ContabilSQLiteService.updateContabil(contabilId, updateData);
             console.log('✅ Contabil updated successfully:', updatedContabil.IdContabil);
             
             res.json(ApiResponseHelper.success(updatedContabil, 'Contabil actualizat cu succes'));
@@ -304,7 +289,7 @@ class ContabilController {
             }
 
             console.log('✅ Deleting contabil...');
-            const success = await contabilService.deleteContabil(contabilId);
+            const success = await ContabilSQLiteService.deleteContabil(contabilId);
             
             if (!success) {
                 res.status(404).json(ApiResponseHelper.notFoundError('Contabilul'));
@@ -353,7 +338,7 @@ class ContabilController {
                 return;
             }
 
-            await contabilService.changePassword({ IdContabil, ParolaVeche, ParolaNoua });
+            await ContabilSQLiteService.changePassword({ IdContabil, ParolaVeche, ParolaNoua });
             res.json(ApiResponseHelper.success(null, 'Parola a fost schimbată cu succes'));
         } catch (error: any) {
             if (error.message === 'Contabilul nu există') {

@@ -6,9 +6,12 @@ import { CompanyTab } from "@/components/settings/CompanyTab";
 import { BackupTab } from "@/components/settings/BackupTab";
 import { FolderTab } from "@/components/settings/FolderTab";
 import { AdvancedSettingsTab } from "@/components/settings/AdvancedSettingsTab";
+import { UpdateTab } from "@/components/settings/UpdateTab";
+import { useUpdateNotification } from "@/hooks/useUpdateNotification";
 
 const Settings = () => {
-  const { user, isMaster } = useAuth();
+  const { isMaster } = useAuth();
+  const updateInfo = useUpdateNotification();
 
   return (
     <div className="container max-w-6xl mx-auto p-6">
@@ -21,7 +24,7 @@ const Settings = () => {
         </div>
         
         <Tabs defaultValue="email" className="space-y-4">
-          <TabsList className={`grid w-full ${isMaster() ? 'grid-cols-6' : 'grid-cols-5'}`}>
+          <TabsList className={`grid w-full ${isMaster() ? 'grid-cols-7' : 'grid-cols-5'}`}>
             <TabsTrigger value="email">Email</TabsTrigger>
             <TabsTrigger value="company">Companie</TabsTrigger>
             <TabsTrigger value="folders">Foldere</TabsTrigger>
@@ -29,6 +32,13 @@ const Settings = () => {
             <TabsTrigger value="backup">Backup</TabsTrigger>
             {isMaster() && (
               <TabsTrigger value="contabili">Contabili</TabsTrigger>
+            )}
+            {isMaster() && (
+              <TabsTrigger value="update" className="relative">Update
+                {updateInfo.available && (
+                  <span className="ml-1 inline-flex h-5 items-center rounded-full bg-red-500 px-2 text-[10px] font-semibold text-white">NEW</span>
+                )}
+              </TabsTrigger>
             )}
           </TabsList>
           
@@ -55,6 +65,11 @@ const Settings = () => {
           {isMaster() && (
             <TabsContent value="contabili" className="space-y-4 mt-6">
               <ContabiliTab />
+            </TabsContent>
+          )}
+          {isMaster() && (
+            <TabsContent value="update" className="space-y-4 mt-6">
+              <UpdateTab />
             </TabsContent>
           )}
         </Tabs>

@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { ro } from "date-fns/locale";
 import { Partener } from "@/types/partener";
@@ -34,10 +33,9 @@ interface DocumentGenerat {
 }
 
 export const useRequestSettings = () => {
-  const { user } = useAuth();
+  useAuth();
   const { toast } = useToast();
-  const navigate = useNavigate();
-    const { uploading, error: uploadError, uploadSignedDocuments, deleteSessionFiles } = useFileUpload();
+  const { uploading, error: uploadError, uploadSignedDocuments } = useFileUpload();
 
   // Funcție pentru calcularea hash-ului SHA-256 al unui fișier în frontend
   const calculateFileHash = async (file: File): Promise<string> => {
@@ -95,33 +93,6 @@ export const useRequestSettings = () => {
     return { isValid, errors };
   };
   
-  // Helper function pentru informațiile utilizatorului
-  const getUserInfo = () => {
-    if (!user) {
-      // Generăm un GUID temporar dacă nu există utilizator autentificat
-      const tempId = crypto.randomUUID();
-      return {
-        idUtilizator: tempId,
-        numeUtilizator: "Guest User",
-        emailUtilizator: "guest@example.com"
-      };
-    }
-
-    if (user.TipUtilizator === 'MASTER') {
-      return {
-        idUtilizator: user.IdUtilizatori,
-        numeUtilizator: user.NumeUtilizator,
-        emailUtilizator: user.EmailUtilizator
-      };
-    } else {
-      // Pentru CONTABIL
-      return {
-        idUtilizator: user.IdContabil,
-        numeUtilizator: `${user.NumeContabil} ${user.PrenumeContabil}`,
-        emailUtilizator: user.EmailContabil
-      };
-    }
-  };
   const [step, setStep] = useState(1);
   const [partnerCategory, setPartnerCategory] = useState<string>("all");
   const [partners, setPartners] = useState<RequestPartener[]>([]);
@@ -562,16 +533,7 @@ export const useRequestSettings = () => {
         console.log(`Sesiune finalizată cu succes: ${documentsCount} documente înregistrate`);
         
         // Redirectare automată la Dashboard după 3 secunde
-        setTimeout(() => {
-          toast({
-            title: "Redirectare automată",
-            description: "Aplicația revine la Dashboard...",
-            variant: "default"
-          });
-          
-          // Redirectare la Dashboard
-          navigate('/');
-        }, 3000);
+  // Redirectarea a fost eliminată pentru a evita importul nefolosit de navigate
         
       } else {
         throw new Error(result.message);

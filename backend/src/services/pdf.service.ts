@@ -5,6 +5,11 @@ interface PdfOptions {
   includeInactive?: boolean;
   includeObservations?: boolean;
   orientation?: 'portrait' | 'landscape';
+  sessionInfo?: {
+    idSesiune?: string;
+    data?: string; // ISO string or any parsable date
+    categoria?: string; // ex: cereri, fișe, etc.
+  };
 }
 
 interface EmailPdfData {
@@ -20,20 +25,27 @@ class PdfService {
     
     try {
       // Creează tabela HTML pentru parteneri
-      const tableRows = partners.map((partner, index) => `
+    const tableRows = partners.map((partner, index) => `
         <tr>
           <td style="text-align: center; padding: 8px; border: 1px solid #ddd;">${index + 1}</td>
           <td style="padding: 8px; border: 1px solid #ddd;">${partner.numePartener || 'N/A'}</td>
-          <td style="text-align: center; padding: 8px; border: 1px solid #ddd;">${partner.cuiPartener || 'N/A'}</td>
-          <td style="text-align: center; padding: 8px; border: 1px solid #ddd;">${partner.telefonPartener || ' '}</td>
-          <td style="padding: 8px; border: 1px solid #ddd;">${partner.emailPartener || ' '}</td>
-          <td style="text-align: center; padding: 8px; border: 1px solid #ddd;">${partner.clientDUC ? '●' : ''}</td>
-          <td style="text-align: center; padding: 8px; border: 1px solid #ddd;">${partner.clientDL ? '●' : ''}</td>
-          <td style="text-align: center; padding: 8px; border: 1px solid #ddd;">${partner.furnizorDUC ? '●' : ''}</td>
-          <td style="text-align: center; padding: 8px; border: 1px solid #ddd;">${partner.furnizorDL ? '●' : ''}</td>
+      <td style="text-align: center; padding: 8px; border: 1px solid #ddd;">${partner.cuiPartener || 'N/A'}</td>
+      <td style="text-align: center; padding: 8px; border: 1px solid #ddd;">${partner.dataTrimitere ? new Date(partner.dataTrimitere).toLocaleDateString('ro-RO') : ''}</td>
+      <td style="padding: 8px; border: 1px solid #ddd;">${partner.numeFisier || ''}</td>
+      <td style="text-align: center; padding: 8px; border: 1px solid #ddd;">${partner.dataRaspuns ? new Date(partner.dataRaspuns).toLocaleDateString('ro-RO') : ''}</td>
         </tr>
       `).join('');
       
+      // Prelucrează informațiile de sesiune pentru antet
+      const sesiuneText = (() => {
+        const id = options.sessionInfo?.idSesiune || '-';
+        const data = options.sessionInfo?.data
+          ? new Date(options.sessionInfo.data).toLocaleDateString('ro-RO')
+          : new Date().toLocaleDateString('ro-RO');
+        const categoria = options.sessionInfo?.categoria || '-';
+        return `Sesiune: ${id} | Data: ${data} | Categoria: ${categoria}`;
+      })();
+
       // Template HTML complet
       const htmlContent = `
         <!DOCTYPE html>
@@ -65,6 +77,11 @@ class PdfService {
             .subtitle {
               font-size: 12px;
               margin-bottom: 20px;
+            }
+            .session {
+              font-size: 12px;
+              color: #555;
+              margin-top: 4px;
             }
             table {
               width: 100%;
@@ -114,20 +131,18 @@ class PdfService {
           <div class="header">
             <div class="title">${options.title || 'LISTĂ PARTENERI'}</div>
             <div class="subtitle">Total parteneri: ${partners.length} | Generat: ${new Date().toLocaleDateString('ro-RO')}</div>
+            <div class="session">${sesiuneText}</div>
           </div>
           
           <table>
             <thead>
               <tr>
                 <th style="width: 25px; text-align: center;">Nr.</th>
-                <th style="width: 180px;">NUME PARTENER</th>
-                <th style="width: 60px; text-align: center;">CUI</th>
-                <th style="width: 80px; text-align: center;">Telefon</th>
-                <th style="width: 120px;">Email</th>
-                <th style="width: 40px; text-align: center;">Client DUC</th>
-                <th style="width: 40px; text-align: center;">Client DL</th>
-                <th style="width: 45px; text-align: center;">Furnizor DUC</th>
-                <th style="width: 45px; text-align: center;">Furnizor DL</th>
+                <th style="width: 220px;">Nume partener</th>
+                <th style="width: 80px; text-align: center;">CUI</th>
+                <th style="width: 110px; text-align: center;">Data email trimis</th>
+                <th style="width: 240px;">Nume fișier PDF atașat</th>
+                <th style="width: 110px; text-align: center;">Data răspuns</th>
               </tr>
             </thead>
             <tbody>
@@ -173,7 +188,7 @@ class PdfService {
         headerTemplate: ' ',
         footerTemplate: `
           <div style="width: 100%; font-size: 8px; text-align: left; color: #444;">
-            <div>          Legendă: DUC = DUCFARM S.R.L. | DL = DUCFARM LOGISTIC S.R.L. | * = Da | (gol) = Nu</div>
+            <div>Raport export parteneri – include: Nume, CUI, Data trimitere email, Fișier atașat, Data răspuns</div>
           </div>
           <div style="width: 100%; font-size: 8px; text-align: center; color: #444;">
             <div>Pagina <span class="pageNumber"></span> din <span class="totalPages"></span></div>

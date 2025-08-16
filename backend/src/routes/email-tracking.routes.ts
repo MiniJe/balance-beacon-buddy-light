@@ -10,6 +10,12 @@ const router = Router();
  */
 router.get('/pixel/:token', emailTrackingController.trackPixel.bind(emailTrackingController));
 
+// Endpoints publice pentru acțiuni (nu necesită autentificare)
+router.get('/confirm/:token', emailTrackingController.confirmIntent.bind(emailTrackingController));
+router.get('/confirm/ok/:token', emailTrackingController.confirmFinalize.bind(emailTrackingController));
+router.get('/will-respond/:token', emailTrackingController.willRespondIntent.bind(emailTrackingController));
+router.get('/will-respond/ok/:token', emailTrackingController.willRespondFinalize.bind(emailTrackingController));
+
 /**
  * Endpoint pentru obținerea statisticilor unui email (necesită autentificare)
  * GET /api/email-tracking/stats/:idJurnalEmail
@@ -34,5 +40,11 @@ router.get('/report', authMiddleware, emailTrackingController.generateReport.bin
  * Body: { days: 7, reminderType: 'SOFT' | 'URGENT' }
  */
 router.post('/send-reminders', authMiddleware, emailTrackingController.sendReminders.bind(emailTrackingController));
+
+/**
+ * Reconciliere manuală a stării unui email (necesită autentificare)
+ * GET /api/email-tracking/reconcile/:idJurnalEmail
+ */
+router.get('/reconcile/:idJurnalEmail', authMiddleware, emailTrackingController.reconcile.bind(emailTrackingController));
 
 export default router;

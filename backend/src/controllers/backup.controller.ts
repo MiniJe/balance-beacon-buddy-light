@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { pool, backupBlobServiceClient, backupContainerName, blobServiceClient, containerName, templatesContainerName } from '../config/azure';
+// NOTE: This controller still depends on deprecated Azure artifacts (pool/blob storage).
+// In LIGHT SQLite version these will no-op; consider rewriting to use pure filesystem + SQLite exports.
 import SetariBackupService from '../services/SetariBackupService';
 import { FolderSettingsService } from '../services/folder.settings.service';
 import { ApiResponseHelper } from '../types/api.types';
@@ -8,7 +10,6 @@ import * as path from 'path';
 
 interface BackupSettings {
     autoBackupEnabled: boolean;
-    cloudBackupEnabled: boolean;
     emailNotificationsEnabled: boolean;
     backupTime: string;
 }
@@ -49,7 +50,6 @@ export class BackupController {
             // Pentru moment, returnăm setări statice, dar acestea pot fi stored în baza de date
             const settings: BackupSettings = {
                 autoBackupEnabled: false,
-                cloudBackupEnabled: true,  // Azure blob storage este activat
                 emailNotificationsEnabled: false,
                 backupTime: "02:00"
             };

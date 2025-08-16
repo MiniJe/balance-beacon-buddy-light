@@ -183,7 +183,7 @@ export const useContabiliManagement = () => {
   const handleResetPassword = async (contabil: Contabil) => {
     try {
       console.log(`⏳ Resetting password for contabil ${contabil.IdContabil}`);
-        const result = await contabilService.resetContabilPassword(contabil.IdContabil);
+  await contabilService.resetContabilPassword(contabil.IdContabil);
       console.log('✅ Password reset');
       
       toast.success(`Parola contabilului a fost resetată cu succes!`);

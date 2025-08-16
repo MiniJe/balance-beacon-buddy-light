@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { cereriConfirmareOrchestratorService } from '../services/cereri.confirmare.orchestrator.service';
-import { advancedStorageService } from '../services/advanced.storage.service';
+// Azure advancedStorageService eliminat în varianta LIGHT – funcțiile legate de Blob returnează acum mesaje explicite.
 
 /**
  * Controller îmbunătățit pentru procesul de cereri de confirmare
@@ -355,10 +355,7 @@ export class AdvancedCereriConfirmareController {
 
             console.log(`📋 Listare documente pentru sesiunea: ${idSesiune}`);
 
-            const documente = await advancedStorageService.listDocumentsForSession(
-                idSesiune,
-                tipDocument as 'cereri' | 'semnate' | 'templates' | undefined
-            );
+            const documente: any[] = []; // Storage dezactivat
 
             res.status(200).json({
                 success: true,
@@ -396,11 +393,8 @@ export class AdvancedCereriConfirmareController {
                 return;
             }
 
-            const url = await advancedStorageService.generatePresignedUrl(
-                decodeURIComponent(blobPath),
-                'confirmarisolduri',
-                expiryHours ? parseInt(expiryHours as string) : 24
-            );
+            // Returnăm direct un mesaj că funcționalitatea este dezactivată
+            const url = 'STORAGE_DEZACTIVAT_LIGHT';
 
             res.status(200).json({
                 success: true,
@@ -439,7 +433,7 @@ export class AdvancedCereriConfirmareController {
 
             console.log(`🗑️ Ștergere documente pentru sesiunea: ${idSesiune}`);
 
-            const documenteSterse = await advancedStorageService.deleteSessionDocuments(idSesiune);
+            const documenteSterse = 0; // Storage dezactivat
 
             res.status(200).json({
                 success: true,

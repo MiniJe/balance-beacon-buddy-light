@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { ReloadIcon, DownloadIcon, CheckCircledIcon, ExclamationTriangleIcon, InfoCircledIcon } from "@radix-ui/react-icons";
@@ -18,7 +18,6 @@ interface BackupItem {
 
 interface BackupSettings {
   autoBackupEnabled: boolean;
-  cloudBackupEnabled: boolean;
   emailNotificationsEnabled: boolean;
   backupTime: string;
 }
@@ -32,7 +31,6 @@ export const BackupTab = () => {
   const [downloadingBackup, setDownloadingBackup] = useState<string | null>(null);
   const [settings, setSettings] = useState<BackupSettings>({
     autoBackupEnabled: false,
-    cloudBackupEnabled: false,
     emailNotificationsEnabled: false,
     backupTime: "02:00"
   });
@@ -278,7 +276,7 @@ export const BackupTab = () => {
     }
   };
 
-  const downloadBackup = async (backupId: string, fileName: string) => {
+  const downloadBackup = async (backupId: string, _fileName: string) => {
     setDownloadingBackup(backupId);
     try {
       const token = localStorage.getItem('token');
@@ -389,19 +387,6 @@ export const BackupTab = () => {
             <Switch 
               checked={settings.autoBackupEnabled}
               onCheckedChange={(checked) => saveBackupSettings({ autoBackupEnabled: checked })}
-            />
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <div className="text-base">Backup în cloud</div>
-              <div className="text-sm text-muted-foreground">
-                Backup-uri în cloud momentan nu sunt disponibile în versiunea Light
-              </div>
-            </div>
-            <Switch 
-              checked={false}
-              disabled={true}
             />
           </div>
           

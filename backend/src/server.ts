@@ -27,11 +27,14 @@ import auditRoutes from './routes/audit.routes'; // ✅ ADĂUGAT: rute pentru au
 import uploadRoutes from './routes/upload.routes'; // ✅ ADĂUGAT: rute pentru upload fișiere semnate
 import folderSettingsRoutes from './routes/folder.settings.routes'; // ✅ ADĂUGAT: rute pentru setări foldere
 import companySettingsRoutes from './routes/company.settings.routes'; // ✅ ADĂUGAT: rute pentru setări companie
+import updateRoutes from './routes/update.routes'; // ✅ Rute update aplicație
+import systemRoutes from './routes/system.routes';
 import { initializeDatabase } from './config/sqlite';
 import { emailService } from './services/email.service';
 import { folderSettingsService } from './services/folder.settings.service';
 import { companySettingsService } from './services/company.settings.service';
 import { healthCheck, readinessCheck } from './controllers/health.controller';
+import { updateService } from './services/update.service';
 
 config();
 
@@ -56,6 +59,11 @@ initializeDatabase()
     })
     .then(() => {
         console.log('✅ Serviciul de email inițializat');
+    // Verificare disponibilitate update (doar notificare, fără aplicare) dacă este setată variabila
+    const notify = process.env.CHECK_UPDATES_ON_START === 'true';
+    updateService.startupCheck(!!notify).then(() => {
+      if (notify) console.log('🔍 Startup update check finalizat');
+    });
     })
     .catch(console.error);
 
@@ -85,6 +93,8 @@ app.use('/api/audit', auditRoutes); // ✅ ADĂUGAT: rute pentru audit PDF și h
 app.use('/api/upload', uploadRoutes); // ✅ ADĂUGAT: rute pentru upload fișiere semnate
 app.use('/api/folder-settings', folderSettingsRoutes); // ✅ ADĂUGAT: rute pentru setări foldere
 app.use('/api/company-settings', companySettingsRoutes); // ✅ ADĂUGAT: rute pentru setări companie
+app.use('/api/update', updateRoutes); // ✅ Rute update aplicație
+app.use('/api/system', systemRoutes); // ✅ Rute overview sistem
 
 // Rută de test pentru debugging autentificare
 app.get('/api/test-auth', authMiddleware, roleMiddleware(['CONTABIL', 'MASTER']), (req: any, res) => {

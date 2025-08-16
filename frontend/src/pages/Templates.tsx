@@ -173,14 +173,14 @@ const Templates = () => {
   }));
 
   const handleFormattedSelectTemplate = (template: Template) => {
-    const realTemplate = templates.find((t, index) => index + 1 === template.id);
+    const realTemplate = templates.find((_t, index) => index + 1 === template.id);
     if (realTemplate) {
       handleSelectTemplate(realTemplate);
     }
   };
 
   const handleFormattedDeleteTemplate = async (templateId: number) => {
-    const realTemplate = templates.find((t, index) => index + 1 === templateId);
+    const realTemplate = templates.find((_t, index) => index + 1 === templateId);
     if (realTemplate && realTemplate.IdSablon) {
       await handleDeleteTemplate(realTemplate.IdSablon);
     }

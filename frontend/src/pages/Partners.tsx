@@ -10,7 +10,6 @@ import { PartnerTable } from "@/components/partners/PartnerTable";
 import { PartnerFormDialog } from "@/components/partners/PartnerFormDialog";
 
 import { SendPdfDialog } from "@/components/partners/SendPdfDialog";
-import { pdfService } from "@/services/pdf.service";
 import type { EmailData } from "@/components/partners/SendPdfDialog";
 import { useState } from "react";
 
@@ -31,22 +30,11 @@ const Partners = () => {
     selectedPartnerIds,
     setSearchTerm,
     handleSortChange,
-    resetFilters,
     handleSelectPartener,
     handleSelectAll,
-    clearSelection,
-    isPartenerSelected,
     allVisible,
-    someSelected,
     refreshParteneri,
-    handlePartenerCreated,
-    handlePartenerUpdated,
-    handlePartenerDeleted,
-    exportParteneri,
     selectedCount,
-    hasParteneri,
-    isSearching,
-    isEmpty,
     totalParteneri
   } = usePartnersManagement();
 
@@ -59,15 +47,12 @@ const Partners = () => {
   };
 
   // Funcții pentru actualizarea listei locale (simplificat fără paginare)
-  const updatePartenerInList = (updatedPartener: Partener) => {
+  const updatePartenerInList = (_updatedPartener: Partener) => {
     // Nu e nevoie de actualizare locală - refreshParteneri va reîncărca toată lista
     refreshParteneri();
   };
 
-  const removePartenerFromList = (id: string) => {
-    // Nu e nevoie de ștergere locală - refreshParteneri va reîncărca toată lista
-    refreshParteneri();
-  };
+  // Ștergerea locală nu este necesară; folosim refreshParteneri
 
   const getSelectedPartners = async (): Promise<Partener[]> => {
     // Filtrează partenerii selectați din lista curentă
@@ -89,17 +74,7 @@ const Partners = () => {
     handleSortChange({ sortBy: field, sortOrder: newOrder });
   };
 
-  const togglePartnerSelection = (id: string) => {
-    handleSelectPartener(id);
-  };
-
-  const selectAllPartners = () => {
-    handleSelectAll(true);
-  };
-
-  const deselectAllPartners = () => {
-    handleSelectAll(false);
-  };
+  // selection helpers are inlined where needed
   const handleEditPartener = (partener: Partener) => {
     setEditPartener({
       numePartener: partener.numePartener,

@@ -7,7 +7,7 @@ export interface JurnalEmail {
     EmailDestinatar: string;
     SubiectEmail: string;
     ContinutEmail?: string;
-    TipEmail: 'CONFIRMARE' | 'REMINDER' | 'TEST' | 'GENERAL';
+    TipEmail: 'CONFIRMARE' | 'REMINDER' | 'TEST' | 'GENERAL' | 'FISE_PARTENER';
     DataTrimitere: string;
     StatusTrimitere: 'PENDING' | 'SUCCESS' | 'FAILED' | 'RETRY' | 'RESPONDED';
     MesajEroare?: string;
@@ -121,6 +121,19 @@ export const useJurnalEmail = () => {
         
         try {
             const queryParams = new URLSearchParams();
+            const keyMap: Record<string, string> = {
+                DataTrimitereStart: 'dataStart',
+                DataTrimitereEnd: 'dataEnd',
+                StatusTrimitere: 'status',
+                TipEmail: 'tipEmail',
+                IdPartener: 'idPartener',
+                IdLot: 'idLot',
+                IdCerereConfirmare: 'idCerere',
+                EmailDestinatar: 'emailDestinatar',
+                TipDestinatar: 'tipDestinatar',
+                PriorityLevel: 'prioritate',
+                // sortBy/sortOrder/offset/limit keep same name
+            };
             
             // Adaugă filtrele ca query parameters
             Object.entries(filters).forEach(([key, value]) => {
@@ -128,11 +141,11 @@ export const useJurnalEmail = () => {
                     if (Array.isArray(value)) {
                         value.forEach(v => {
                             if (v !== undefined && v !== null) {
-                                queryParams.append(key, v.toString());
+                                queryParams.append(keyMap[key] || key, v.toString());
                             }
                         });
                     } else {
-                        queryParams.append(key, value.toString());
+                        queryParams.append(keyMap[key] || key, value.toString());
                     }
                 }
             });
@@ -202,17 +215,29 @@ export const useJurnalEmail = () => {
         
         try {
             const queryParams = new URLSearchParams();
+            const keyMap: Record<string, string> = {
+                DataTrimitereStart: 'dataStart',
+                DataTrimitereEnd: 'dataEnd',
+                StatusTrimitere: 'status',
+                TipEmail: 'tipEmail',
+                IdPartener: 'idPartener',
+                IdLot: 'idLot',
+                IdCerereConfirmare: 'idCerere',
+                EmailDestinatar: 'emailDestinatar',
+                TipDestinatar: 'tipDestinatar',
+                PriorityLevel: 'prioritate',
+            };
             
             Object.entries(filters).forEach(([key, value]) => {
                 if (value !== undefined && value !== null) {
                     if (Array.isArray(value)) {
                         value.forEach(v => {
                             if (v !== undefined && v !== null) {
-                                queryParams.append(key, v.toString());
+                                queryParams.append(keyMap[key] || key, v.toString());
                             }
                         });
                     } else {
-                        queryParams.append(key, value.toString());
+                        queryParams.append(keyMap[key] || key, value.toString());
                     }
                 }
             });

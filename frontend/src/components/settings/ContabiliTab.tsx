@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, RefreshCw, Key, Shield, Users, Mail, Phone, Building, Calendar, Clock, User } from 'lucide-react';
+import { Plus, Edit2, Trash2, RefreshCw, Key, Users, Mail, Phone, Building, Clock, User } from 'lucide-react';
 import { Contabil, CreateContabilDto, contabilService } from '../../services/contabil.service';
 import { ContabilFormDialog } from './ContabilFormDialog';
 

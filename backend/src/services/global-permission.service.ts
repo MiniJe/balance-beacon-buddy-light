@@ -1,5 +1,4 @@
-import { pool as azurePool } from '../config/azure';
-import * as sql from 'mssql';
+import { getDatabase } from '../config/sqlite';
 import crypto from 'crypto';
 import { getUTCTimestamp } from '../utils/timezone.utils';
 
@@ -148,33 +147,16 @@ export class GlobalPermissionService {
             const timestamp = getUTCTimestamp();
             const permissionsJson = JSON.stringify(update.permissions);
 
+            const db = await getDatabase();
             if (update.userType === 'contabil') {
-                await azurePool.request()
-                    .input('IdContabil', sql.UniqueIdentifier, update.userId)
-                    .input('PermisiuniAcces', permissionsJson)
-                    .input('DataActualizarii', timestamp)
-                    .input('ActualizatDE', update.updatedBy)
-                    .query(`
-                        UPDATE Contabili 
-                        SET PermisiuniAcces = @PermisiuniAcces,
-                            DataActualizării = @DataActualizarii,
-                            ActualizatDE = @ActualizatDE
-                        WHERE IdContabil = @IdContabil
-                    `);
+                await db.run(`UPDATE Contabili SET PermisiuniAcces = ?, DataActualizarii = ?, ActualizatDE = ? WHERE IdContabil = ?`, permissionsJson, timestamp.toISOString(), update.updatedBy, update.userId);
             } else {
-                // Pentru utilizatori normali (când va fi implementată tabela Utilizatori)
-                await azurePool.request()
-                    .input('IdUtilizator', sql.UniqueIdentifier, update.userId)
-                    .input('PermisiuniAcces', permissionsJson)
-                    .input('DataActualizarii', timestamp)
-                    .input('ActualizatDE', update.updatedBy)
-                    .query(`
-                        UPDATE Utilizatori 
-                        SET PermisiuniAcces = @PermisiuniAcces,
-                            DataActualizării = @DataActualizarii,
-                            ActualizatDE = @ActualizatDE
-                        WHERE IdUtilizator = @IdUtilizator
-                    `);
+                // Table Utilizatori may not yet exist in SQLite version; safe-guard
+                try {
+                    await db.run(`UPDATE Utilizatori SET PermisiuniAcces = ?, DataActualizarii = ?, ActualizatDE = ? WHERE IdUtilizator = ?`, permissionsJson, timestamp.toISOString(), update.updatedBy, update.userId);
+                } catch (e) {
+                    console.warn('Utilizatori table update skipped (table may not exist in light version).');
+                }
             }
 
             // Log schimbarea pentru audit și blockchain
@@ -223,21 +205,18 @@ export class GlobalPermissionService {
         try {
             let result;
 
+            const db = await getDatabase();
             if (userType === 'contabil') {
-                result = await azurePool.request()
-                    .input('IdContabil', sql.UniqueIdentifier, userId)
-                    .query('SELECT PermisiuniAcces FROM Contabili WHERE IdContabil = @IdContabil');
+                result = await db.get(`SELECT PermisiuniAcces FROM Contabili WHERE IdContabil = ?`, userId);
             } else {
-                result = await azurePool.request()
-                    .input('IdUtilizator', sql.UniqueIdentifier, userId)
-                    .query('SELECT PermisiuniAcces FROM Utilizatori WHERE IdUtilizator = @IdUtilizator');
+                try {
+                    result = await db.get(`SELECT PermisiuniAcces FROM Utilizatori WHERE IdUtilizator = ?`, userId);
+                } catch (e) {
+                    result = null;
+                }
             }
-
-            if (result.recordset.length === 0) {
-                throw new Error('Utilizatorul nu a fost găsit');
-            }
-
-            const permissionsJson = result.recordset[0].PermisiuniAcces;
+            if (!result) throw new Error('Utilizatorul nu a fost găsit');
+            const permissionsJson = (result as any).PermisiuniAcces;
             return permissionsJson ? JSON.parse(permissionsJson) : null;
 
         } catch (error) {

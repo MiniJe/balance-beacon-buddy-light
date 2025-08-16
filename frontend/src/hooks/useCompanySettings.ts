@@ -143,7 +143,8 @@ export const useCompanySettings = () => {
 
   const handleSaveCompanySettings = async () => {
     if (!validateCompanySettings()) {
-      const firstError = Object.values(validationErrors)[0];
+      // first error is not used directly; validationErrors is shown in UI
+      // const firstError = Object.values(validationErrors)[0];
       return;
     }
 

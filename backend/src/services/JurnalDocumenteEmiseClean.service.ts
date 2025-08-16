@@ -1,6 +1,4 @@
-import sql from 'mssql';
-import { pool } from '../config/azure';
-import { getDatabase } from '../config/sqlite'; // SQLite
+import { getDatabase } from '../config/sqlite'; // SQLite only (Azure removed)
 import crypto from 'crypto';
 import { 
     JurnalDocumenteEmise, 
@@ -122,24 +120,12 @@ export class JurnalDocumenteEmiseCleanService {
      */
     async getDocumentById(idDocument: number): Promise<JurnalDocumenteEmise | null> {
         try {
-            const request = pool.request();
-            
-            const query = `
-                SELECT * FROM JurnalDocumenteEmise 
-                WHERE IdDocumente = @IdDocumente
-            `;
-            
-            request.input('IdDocumente', sql.Int, idDocument);
-            const result = await request.query(query);
-            
-            if (result.recordset.length === 0) {
-                return null;
-            }
-            
-            return this.formatDocumentFromDB(result.recordset[0]);
-            
+            const db = await getDatabase();
+            const row = await db.get(`SELECT * FROM JurnalDocumenteEmise WHERE IdDocumente = ?`, idDocument);
+            if (!row) return null;
+            return this.formatDocumentFromDB(row);
         } catch (error) {
-            console.error('Eroare la căutarea documentului:', error);
+            console.error('Eroare la căutarea documentului (SQLite):', error);
             throw new Error(`Eroare la căutarea documentului: ${error instanceof Error ? error.message : 'Eroare necunoscută'}`);
         }
     }
@@ -147,50 +133,21 @@ export class JurnalDocumenteEmiseCleanService {
     /**
      * Obține toate documentele cu paginare
      */
-    async getDocuments(
-        pagina: number = 1,
-        numarPerPagina: number = 50
-    ): Promise<JurnalDocumenteEmiseResponse> {
+    async getDocuments(pagina: number = 1, numarPerPagina: number = 50): Promise<JurnalDocumenteEmiseResponse> {
         try {
-            const request = pool.request();
+            const db = await getDatabase();
             const offset = (pagina - 1) * numarPerPagina;
-            
-            // Query pentru total
-            const countQuery = `
-                SELECT COUNT(*) as total
-                FROM JurnalDocumenteEmise
-            `;
-            
-            // Query pentru date cu paginare
-            const dataQuery = `
-                SELECT *
-                FROM JurnalDocumenteEmise
-                ORDER BY IdDocumente DESC
-                OFFSET @offset ROWS
-                FETCH NEXT @numarPerPagina ROWS ONLY
-            `;
-            
-            request.input('offset', sql.Int, offset);
-            request.input('numarPerPagina', sql.Int, numarPerPagina);
-            
-            // Executăm ambele query-uri
-            const [countResult, dataResult] = await Promise.all([
-                request.query(countQuery),
-                request.query(dataQuery)
-            ]);
-            
-            const total = countResult.recordset[0].total;
-            const documente = dataResult.recordset.map((row: any) => this.formatDocumentFromDB(row));
-            
-            return {
-                jurnal: documente,
-                total,
-                pagina,
-                totalPagini: Math.ceil(total / numarPerPagina)
-            };
-            
+            const countRow = await db.get(`SELECT COUNT(*) as total FROM JurnalDocumenteEmise`);
+            const rows = await db.all(
+                `SELECT * FROM JurnalDocumenteEmise ORDER BY IdDocumente DESC LIMIT ? OFFSET ?`,
+                numarPerPagina,
+                offset
+            );
+            const documente = rows.map(r => this.formatDocumentFromDB(r));
+            const total = countRow?.total || 0;
+            return { jurnal: documente, total, pagina, totalPagini: Math.ceil(total / numarPerPagina) };
         } catch (error) {
-            console.error('Eroare la obținerea documentelor:', error);
+            console.error('Eroare la obținerea documentelor (SQLite):', error);
             throw new Error(`Eroare la obținerea documentelor: ${error instanceof Error ? error.message : 'Eroare necunoscută'}`);
         }
     }
@@ -200,21 +157,12 @@ export class JurnalDocumenteEmiseCleanService {
      */
     async deleteDocument(idDocument: number): Promise<boolean> {
         try {
-            const request = pool.request();
-            
-            const query = `
-                DELETE FROM JurnalDocumenteEmise 
-                WHERE IdDocumente = @IdDocumente
-            `;
-            
-            request.input('IdDocumente', sql.Int, idDocument);
-            const result = await request.query(query);
-            
+            const db = await getDatabase();
+            const result = await db.run(`DELETE FROM JurnalDocumenteEmise WHERE IdDocumente = ?`, idDocument);
             console.log(`Document șters: ${idDocument}`);
-            return result.rowsAffected[0] > 0;
-            
+            return (result as any)?.changes > 0;
         } catch (error) {
-            console.error('Eroare la ștergerea documentului:', error);
+            console.error('Eroare la ștergerea documentului (SQLite):', error);
             throw new Error(`Eroare la ștergerea documentului: ${error instanceof Error ? error.message : 'Eroare necunoscută'}`);
         }
     }
@@ -246,73 +194,32 @@ export class JurnalDocumenteEmiseCleanService {
     async getAllDocuments(
         pagina: number = 1,
         numarPerPagina: number = 50,
-        statusDocument?: string,
+        _statusDocument?: string,
         idUtilizator?: string,
         dataStart?: string,
         dataEnd?: string
     ): Promise<JurnalDocumenteEmiseResponse> {
         try {
-            const request = pool.request();
+            const db = await getDatabase();
             const offset = (pagina - 1) * numarPerPagina;
-            
-            // Construim WHERE clauses
-            const whereClauses: string[] = [];
-            
-            if (idUtilizator) {
-                whereClauses.push('idUtilizator = @idUtilizator');
-                request.input('idUtilizator', sql.UniqueIdentifier, idUtilizator);
-            }
-            
-            if (dataStart) {
-                whereClauses.push('DataCreare >= @dataStart');
-                request.input('dataStart', sql.DateTime2, dataStart);
-            }
-            
-            if (dataEnd) {
-                whereClauses.push('DataCreare <= @dataEnd');
-                request.input('dataEnd', sql.DateTime2, dataEnd);
-            }
-            
-            const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-            
-            // Query pentru total
-            const countQuery = `
-                SELECT COUNT(*) as total
-                FROM JurnalDocumenteEmise
-                ${whereClause}
-            `;
-            
-            // Query pentru date cu paginare
-            const dataQuery = `
-                SELECT *
-                FROM JurnalDocumenteEmise
-                ${whereClause}
-                ORDER BY IdDocumente DESC
-                OFFSET @offset ROWS
-                FETCH NEXT @numarPerPagina ROWS ONLY
-            `; 
-            
-            request.input('offset', sql.Int, offset);
-            request.input('numarPerPagina', sql.Int, numarPerPagina);
-            
-            // Executăm ambele query-uri
-            const [countResult, dataResult] = await Promise.all([
-                request.query(countQuery),
-                request.query(dataQuery)
-            ]);
-            
-            const total = countResult.recordset[0].total;
-            const documente = dataResult.recordset.map((row: any) => this.formatDocumentFromDB(row));
-            
-            return {
-                jurnal: documente,
-                total,
-                pagina,
-                totalPagini: Math.ceil(total / numarPerPagina)
-            };
-            
+            const where: string[] = [];
+            const params: any[] = [];
+            if (idUtilizator) { where.push('idUtilizator = ?'); params.push(idUtilizator); }
+            if (dataStart) { where.push('DataCreare >= ?'); params.push(dataStart); }
+            if (dataEnd) { where.push('DataCreare <= ?'); params.push(dataEnd); }
+            const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+            const countRow = await db.get(`SELECT COUNT(*) as total FROM JurnalDocumenteEmise ${whereClause}`, ...params);
+            const rows = await db.all(
+                `SELECT * FROM JurnalDocumenteEmise ${whereClause} ORDER BY IdDocumente DESC LIMIT ? OFFSET ?`,
+                ...params,
+                numarPerPagina,
+                offset
+            );
+            const total = countRow?.total || 0;
+            const documente = rows.map(r => this.formatDocumentFromDB(r));
+            return { jurnal: documente, total, pagina, totalPagini: Math.ceil(total / numarPerPagina) };
         } catch (error) {
-            console.error('Eroare la obținerea documentelor:', error);
+            console.error('Eroare la obținerea documentelor (SQLite filtrate):', error);
             throw new Error(`Eroare la obținerea documentelor: ${error instanceof Error ? error.message : 'Eroare necunoscută'}`);
         }
     }

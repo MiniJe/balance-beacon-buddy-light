@@ -28,9 +28,6 @@ export class JurnalEmailController {
                 EmailDestinatar: req.query.emailDestinatar as string,
                 TipDestinatar: req.query.tipDestinatar ? (req.query.tipDestinatar as string).split(',') as any[] : undefined,
                 
-                // Filtrare blockchain
-                StareBlockchain: req.query.stareBlockchain ? (req.query.stareBlockchain as string).split(',') as any[] : undefined,
-                ReteaBlockchain: req.query.reteaBlockchain as string,
                 
                 // Filtrare după prioritate
                 PriorityLevel: req.query.prioritate ? (req.query.prioritate as string).split(',') as any[] : undefined,
@@ -113,22 +110,7 @@ export class JurnalEmailController {
      */
     async getJurnalEmailStats(req: Request, res: Response): Promise<void> {
         try {
-            const filters = {
-                // Filtrare după date
-                DataTrimitereStart: req.query.dataStart ? new Date(req.query.dataStart as string) : undefined,
-                DataTrimitereEnd: req.query.dataEnd ? new Date(req.query.dataEnd as string) : undefined,
-                
-                // Alte filtre similar cu getJurnalEmailuri
-                StatusTrimitere: req.query.status ? (req.query.status as string).split(',') as any[] : undefined,
-                TipEmail: req.query.tipEmail ? (req.query.tipEmail as string).split(',') as any[] : undefined,
-                IdPartener: req.query.idPartener as string,
-                IdLot: req.query.idLot as string,
-                StareBlockchain: req.query.stareBlockchain ? (req.query.stareBlockchain as string).split(',') as any[] : undefined,
-                ReteaBlockchain: req.query.reteaBlockchain as string,
-                PriorityLevel: req.query.prioritate ? (req.query.prioritate as string).split(',') as any[] : undefined
-            };
-
-            const result = await jurnalEmailService.getJurnalEmailStats(filters);
+            const result = await jurnalEmailService.getJurnalEmailStats();
             
             if (result.success) {
                 res.json({
@@ -270,8 +252,6 @@ export class JurnalEmailController {
                 IdPartener: req.query.idPartener as string,
                 IdLot: req.query.idLot as string,
                 EmailDestinatar: req.query.emailDestinatar as string,
-                StareBlockchain: req.query.stareBlockchain ? (req.query.stareBlockchain as string).split(',') as any[] : undefined,
-                ReteaBlockchain: req.query.reteaBlockchain as string,
                 PriorityLevel: req.query.prioritate ? (req.query.prioritate as string).split(',') as any[] : undefined,
                 sortBy: req.query.sortBy as any || 'CreatLa',
                 sortOrder: req.query.sortOrder as any || 'DESC',

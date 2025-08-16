@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { ro } from "date-fns/locale";
 import { Partener } from "@/types/partener";
@@ -25,7 +24,6 @@ interface OrderNumberAssignment {
 export const useSoldSettings = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const navigate = useNavigate();
 
   // Helper function pentru informațiile utilizatorului
   const getUserInfo = () => {

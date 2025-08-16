@@ -1,7 +1,6 @@
 import Imap from 'imap';
 import { simpleParser } from 'mailparser';
-import { pool } from '../config/azure';
-import { jurnalEmailService } from './JurnalEmailService';
+import { getDatabase } from '../config/sqlite';
 
 interface EmailMonitorConfig {
     host: string;
@@ -80,7 +79,7 @@ export class EmailMonitorService {
     /**
      * Verifică pentru emailuri noi și le procesează
      */
-    private async checkForNewEmails(): Promise<void> {
+    public async checkForNewEmails(): Promise<number> {
         try {
             console.log('📧 Verificând pentru emailuri noi...');
             
@@ -102,10 +101,12 @@ export class EmailMonitorService {
             }
             
             // Închide conexiunea
-            this.imap.end();
+            if (this.imap) this.imap.end();
+            return unseenEmails.length;
             
         } catch (error) {
             console.error('❌ Eroare la verificarea emailurilor:', error);
+            return 0;
         }
     }
 
@@ -258,7 +259,7 @@ export class EmailMonitorService {
                     StatusRaspuns: 'RECEIVED'
                 });
 
-                // Dacă emailul este legat de o cerere de confirmare, actualizează și tabela respectivă
+                // (Opțional) Dacă există JurnalCereriConfirmare și e legat, actualizează
                 if (originalEmail.IdCerereConfirmare) {
                     await this.updateCerereConfirmare(originalEmail.IdCerereConfirmare, responseType, email.text, email.date);
                 }
@@ -289,36 +290,33 @@ export class EmailMonitorService {
      */
     private async findOriginalEmail(senderEmail: string, subject: string, inReplyTo?: string): Promise<any> {
         try {
-            const request = pool.request();
-            
-            // Caută mai întâi după Message-ID dacă este disponibil
+            const db = await getDatabase();
+            // 1) Match precis pe In-Reply-To → IdMessageEmail
             if (inReplyTo) {
-                request.input('MessageId', inReplyTo);
-                const result = await request.query(`
-                    SELECT TOP 1 * FROM JurnalEmail 
-                    WHERE IdMessageEmail = @MessageId
-                    ORDER BY DataTrimitere DESC
-                `);
-                
-                if (result.recordset.length > 0) {
-                    return result.recordset[0];
-                }
+                const r = await db.get(`
+                    SELECT * FROM JurnalEmail
+                    WHERE IdMessageEmail = ?
+                    ORDER BY datetime(DataTrimitere) DESC
+                    LIMIT 1
+                `, [inReplyTo]);
+                if (r) return r;
             }
 
-            // Caută după email și subiect similar (pentru emailuri care răspund cu Re:)
-            request.input('EmailDestinatar', senderEmail);
-            request.input('SubjectPattern', `%${subject.replace(/^(RE:|FW:)/i, '').trim()}%`);
-            
-            const result = await request.query(`
-                SELECT TOP 1 * FROM JurnalEmail 
-                WHERE EmailDestinatar = @EmailDestinatar 
-                AND (SubiectEmail LIKE @SubjectPattern OR @SubjectPattern LIKE CONCAT('%', SubiectEmail, '%'))
-                AND DataTrimitere >= DATEADD(day, -30, GETDATE())
-                ORDER BY DataTrimitere DESC
-            `);
-
-            return result.recordset.length > 0 ? result.recordset[0] : null;
-
+            // 2) Fallback: match pe expeditor (devine destinatarul nostru trimis) și subiect similar în ultimele 30 zile
+            const baseSubject = subject.replace(/^(RE:|FW:|FWD:)/i, '').trim();
+            const like = `%${baseSubject}%`;
+            const r2 = await db.get(`
+                SELECT * FROM JurnalEmail
+                WHERE lower(EmailDestinatar) = lower(?)
+                  AND (
+                        SubiectEmail LIKE ?
+                     OR ? LIKE '%' || SubiectEmail || '%'
+                  )
+                  AND datetime(DataTrimitere) >= datetime('now','-30 days')
+                ORDER BY datetime(DataTrimitere) DESC
+                LIMIT 1
+            `, [senderEmail, like, baseSubject]);
+            return r2 || null;
         } catch (error) {
             console.error('❌ Eroare la căutarea emailului original:', error);
             return null;
@@ -359,31 +357,27 @@ export class EmailMonitorService {
      */
     private async updateEmailWithResponse(idJurnalEmail: string, responseData: any): Promise<void> {
         try {
-            const request = pool.request()
-                .input('IdJurnalEmail', idJurnalEmail)
-                .input('DataRaspuns', responseData.DataRaspuns)
-                .input('RaspunsEmail', responseData.RaspunsEmail)
-                .input('TipRaspuns', responseData.TipRaspuns)
-                .input('StatusRaspuns', responseData.StatusRaspuns)
-                .input('ModificatLa', new Date())
-                .input('ModificatDe', 'EMAIL_MONITOR_SERVICE');
-
-            await request.query(`
-                UPDATE JurnalEmail 
+            const db = await getDatabase();
+            await db.run(`
+                UPDATE JurnalEmail
                 SET 
-                    DataRaspuns = @DataRaspuns,
-                    RaspunsEmail = @RaspunsEmail,
-                    StatusTrimitere = CASE 
-                        WHEN StatusTrimitere = 'SUCCESS' THEN 'RESPONDED'
-                        ELSE StatusTrimitere 
-                    END,
-                    ModificatLa = @ModificatLa,
-                    ModificatDe = @ModificatDe
-                WHERE IdJurnalEmail = @IdJurnalEmail
-            `);
-
+                    DataRaspuns = COALESCE(DataRaspuns, ?),
+                    RaspunsEmail = ?,
+                    TipRaspuns = ?,
+                    StatusRaspuns = ?,
+                    StatusTrimitere = CASE WHEN StatusTrimitere = 'SUCCESS' THEN 'RESPONDED' ELSE StatusTrimitere END,
+                    ModificatLa = ?,
+                    ModificatDe = 'EMAIL_MONITOR_SERVICE'
+                WHERE IdJurnalEmail = ?
+            `, [
+                (responseData.DataRaspuns instanceof Date) ? responseData.DataRaspuns.toISOString() : responseData.DataRaspuns,
+                responseData.RaspunsEmail || null,
+                responseData.TipRaspuns || null,
+                responseData.StatusRaspuns || 'RECEIVED',
+                new Date().toISOString(),
+                idJurnalEmail
+            ]);
             console.log(`✅ Actualizat emailul ${idJurnalEmail} cu răspunsul`);
-
         } catch (error) {
             console.error('❌ Eroare la actualizarea emailului cu răspunsul:', error);
         }
@@ -394,39 +388,36 @@ export class EmailMonitorService {
      */
     private async updateCerereConfirmare(idCerere: string, tipRaspuns: string, observatii: string, dataRaspuns: Date): Promise<void> {
         try {
-            const request = pool.request()
-                .input('IdCerere', idCerere)
-                .input('TipRaspuns', tipRaspuns.toLowerCase())
-                .input('ObservatiiRaspuns', observatii)
-                .input('DataRaspuns', dataRaspuns)
-                .input('TimeStampRaspuns', Math.floor(dataRaspuns.getTime() / 1000));
+            const db = await getDatabase();
+            // Verificăm dacă tabela există
+            const cols = await db.all(`PRAGMA table_info(JurnalCereriConfirmare)`);
+            if (!cols || cols.length === 0) return; // nu există, ieșim liniștit
 
-            // Mapează tipul răspunsului la statusul cererii
+            // Mapare status
             let statusCerere = 'trimisa';
-            if (tipRaspuns === 'CONFIRMED') {
-                statusCerere = 'confirmata';
-            } else if (tipRaspuns === 'DISPUTED') {
-                statusCerere = 'refuzata';
-            } else if (tipRaspuns === 'CORRECTIONS') {
-                statusCerere = 'trimisa'; // Rămâne în așteptare pentru clarificări
-            }
+            if (tipRaspuns === 'CONFIRMED') statusCerere = 'confirmata';
+            else if (tipRaspuns === 'DISPUTED') statusCerere = 'refuzata';
 
-            request.input('StatusCerere', statusCerere);
-
-            await request.query(`
-                UPDATE JurnalCereriConfirmare 
+            await db.run(`
+                UPDATE JurnalCereriConfirmare
                 SET 
-                    dataRaspuns = @DataRaspuns,
-                    timeStampRaspuns = @TimeStampRaspuns,
-                    tipRaspuns = @TipRaspuns,
-                    observatiiRaspuns = @ObservatiiRaspuns,
-                    statusCerere = @StatusCerere,
-                    modificatLa = GETDATE()
-                WHERE idCerere = @IdCerere
-            `);
-
+                    dataRaspuns = ?,
+                    timeStampRaspuns = ?,
+                    tipRaspuns = ?,
+                    observatiiRaspuns = ?,
+                    statusCerere = ?,
+                    modificatLa = ?
+                WHERE idCerere = ?
+            `, [
+                dataRaspuns.toISOString(),
+                Math.floor(dataRaspuns.getTime()/1000),
+                tipRaspuns.toLowerCase(),
+                observatii || null,
+                statusCerere,
+                new Date().toISOString(),
+                idCerere
+            ]);
             console.log(`✅ Actualizată cererea de confirmare ${idCerere}`);
-
         } catch (error) {
             console.error('❌ Eroare la actualizarea cererii de confirmare:', error);
         }
@@ -437,26 +428,49 @@ export class EmailMonitorService {
      */
     private async saveOrphanResponse(email: ParsedEmailResponse): Promise<void> {
         try {
-            const request = pool.request()
-                .input('MessageId', email.messageId)
-                .input('From', email.from)
-                .input('Subject', email.subject)
-                .input('Content', email.text)
-                .input('ReceivedDate', email.date)
-                .input('InReplyTo', email.inReplyTo || null);
-
-            await request.query(`
+            const db = await getDatabase();
+            await this.ensureOrphanSchema();
+            await db.run(`
                 INSERT INTO EmailRaspunsuriOrphan (
-                    MessageId, FromAddress, Subject, Content, ReceivedDate, InReplyTo, CreatedAt
-                ) VALUES (
-                    @MessageId, @From, @Subject, @Content, @ReceivedDate, @InReplyTo, GETDATE()
-                )
-            `);
-
+                    MessageId, FromAddress, Subject, Content, ReceivedDate, InReplyTo, CreatedAt, IsProcessed
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+            `, [
+                email.messageId || null,
+                email.from,
+                email.subject,
+                email.text || email.html || '',
+                (email.date instanceof Date) ? email.date.toISOString() : new Date().toISOString(),
+                email.inReplyTo || null,
+                new Date().toISOString()
+            ]);
             console.log('📝 Salvat răspuns orphan pentru investigare manuală');
-
         } catch (error) {
             console.error('❌ Eroare la salvarea răspunsului orphan:', error);
+        }
+    }
+
+    private async ensureOrphanSchema(): Promise<void> {
+        try {
+            const db = await getDatabase();
+            await db.run(`
+                CREATE TABLE IF NOT EXISTS EmailRaspunsuriOrphan (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    MessageId TEXT,
+                    FromAddress TEXT,
+                    Subject TEXT,
+                    Content TEXT,
+                    ReceivedDate TEXT,
+                    InReplyTo TEXT,
+                    CreatedAt TEXT,
+                    IsProcessed INTEGER DEFAULT 0,
+                    ProcessedDate TEXT,
+                    ProcessedBy TEXT,
+                    LinkedToEmailId TEXT,
+                    ProcessingNotes TEXT
+                )
+            `);
+        } catch (e) {
+            console.error('❌ Eroare creare schemă EmailRaspunsuriOrphan:', e);
         }
     }
 
@@ -464,36 +478,16 @@ export class EmailMonitorService {
      * Obține configurația din setările aplicației
      */
     static async getConfigFromDatabase(): Promise<EmailMonitorConfig | null> {
-        try {
-            const result = await pool.request().query(`
-                SELECT 
-                    IMAP_Host,
-                    IMAP_Port,
-                    IMAP_User,
-                    IMAP_Password,
-                    IMAP_TLS
-                FROM SetariSistem 
-                WHERE Active = 1
-            `);
-
-            if (result.recordset.length > 0) {
-                const settings = result.recordset[0];
-                return {
-                    host: settings.IMAP_Host,
-                    port: settings.IMAP_Port,
-                    user: settings.IMAP_User,
-                    password: settings.IMAP_Password,
-                    tls: settings.IMAP_TLS,
-                    tlsOptions: { rejectUnauthorized: false }
-                };
-            }
-
-            return null;
-
-        } catch (error) {
-            console.error('❌ Eroare la obținerea configurației IMAP:', error);
-            return null;
+        // Pentru varianta locală fără Azure: citim din variabile de mediu
+        const host = process.env.IMAP_HOST;
+        const port = parseInt(process.env.IMAP_PORT || '993');
+        const user = process.env.IMAP_USER;
+        const password = process.env.IMAP_PASSWORD;
+        const tls = (process.env.IMAP_TLS || 'true') === 'true';
+        if (host && user && password) {
+            return { host, port, user, password, tls, tlsOptions: { rejectUnauthorized: false } };
         }
+        return null;
     }
 }
 
@@ -503,5 +497,6 @@ export const emailMonitorService = new EmailMonitorService({
     port: parseInt(process.env.IMAP_PORT || '993'),
     user: process.env.IMAP_USER || '',
     password: process.env.IMAP_PASSWORD || '',
-    tls: process.env.IMAP_TLS === 'true'
+    tls: (process.env.IMAP_TLS || 'true') === 'true',
+    tlsOptions: { rejectUnauthorized: false }
 });

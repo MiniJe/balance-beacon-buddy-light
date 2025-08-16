@@ -3,8 +3,8 @@ import path from 'path';
 /**
  * ⚠️ VERSIUNEA LIGHT - AZURE DEPRECAT
  * 
- * Acest fișier oferă export-uri goale pentru compatibilitate cu serviciile existente.
- * În versiunea LIGHT, toate funcționalitățile Azure au fost înlocuite cu SQLite și stocare locală.
+ * Acest fișier oferă export-uri goale pentru compatibilitate temporară.
+ * TODO: Eliminare completă după ce toate importurile au fost curățate.
  */
 
 // Export compatibilitate pentru Azure SQL (nu mai este folosit în versiunea LIGHT)

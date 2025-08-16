@@ -4,7 +4,7 @@
  * CONTABILII au acces restricționat configurabil de către MASTER
  */
 
-import { pool } from '../config/azure';
+import { getDatabase } from '../config/sqlite';
 
 export interface ContabilPermissions {
     // Document Management
@@ -107,30 +107,19 @@ export class MasterPermissionsService {
      */
     static async getContabilPermissions(idContabil: string): Promise<ContabilPermissions | null> {
         try {
-            const request = pool.request();
-            request.input('idContabil', idContabil);
-            
-            const result = await request.query(`
-                SELECT PermisiuniAcces, StatusContabil, NumeContabil
-                FROM Contabili 
-                WHERE IdContabil = @idContabil
-            `);
-            
-            if (result.recordset.length === 0) {
+        const db = await getDatabase();
+        const row = await db.get(`SELECT PermisiuniAcces, StatusContabil, NumeContabil FROM Contabili WHERE IdContabil = ?`, idContabil);
+        if (!row) {
                 console.log(`❌ MASTER-PERM: Contabil ${idContabil} not found`);
                 return null;
             }
-            
-            const contabil = result.recordset[0];
-            if (contabil.StatusContabil !== 'Activ') {
+        if (row.StatusContabil !== 'Activ') {
                 console.log(`❌ MASTER-PERM: Contabil ${idContabil} is inactive`);
                 return null;
             }
-            
-            // Parse existing permissions or use defaults
-            if (contabil.PermisiuniAcces) {
+        if (row.PermisiuniAcces) {
                 try {
-                    return JSON.parse(contabil.PermisiuniAcces) as ContabilPermissions;
+            return JSON.parse(row.PermisiuniAcces) as ContabilPermissions;
                 } catch (error) {
                     console.error('❌ MASTER-PERM: Error parsing permissions, using defaults:', error);
                     return DEFAULT_CONTABIL_PERMISSIONS;
@@ -167,17 +156,8 @@ export class MasterPermissionsService {
             }
             
             // Update permissions
-            const request = pool.request();
-            request.input('idContabil', idContabil);
-            request.input('permisiuni', JSON.stringify(permissions));
-            request.input('dataModificare', new Date());
-            
-            await request.query(`
-                UPDATE Contabili 
-                SET PermisiuniAcces = @permisiuni,
-                    DataModificare = @dataModificare
-                WHERE IdContabil = @idContabil
-            `);
+            const db = await getDatabase();
+            await db.run(`UPDATE Contabili SET PermisiuniAcces = ?, DataModificare = ? WHERE IdContabil = ?`, JSON.stringify(permissions), new Date().toISOString(), idContabil);
             
             console.log(`✅ MASTER-PERM: Permissions updated for contabil ${idContabil} by MASTER ${masterId}`);
             
@@ -213,14 +193,9 @@ export class MasterPermissionsService {
                 return { success: false, message: 'Doar utilizatorii MASTER pot vedea toate permisiunile' };
             }
             
-            const request = pool.request();
-            const result = await request.query(`
-                SELECT IdContabil, NumeContabil, EmailContabil, StatusContabil, PermisiuniAcces
-                FROM Contabili
-                ORDER BY NumeContabil
-            `);
-            
-            const contabili = result.recordset.map(row => ({
+            const db = await getDatabase();
+            const rows = await db.all(`SELECT IdContabil, NumeContabil, EmailContabil, StatusContabil, PermisiuniAcces FROM Contabili ORDER BY NumeContabil`);
+            const contabili = rows.map((row: any) => ({
                 IdContabil: row.IdContabil,
                 NumeContabil: row.NumeContabil,
                 EmailContabil: row.EmailContabil,
@@ -263,16 +238,9 @@ export class MasterPermissionsService {
      */
     private static async verifyMasterRole(userId: string): Promise<boolean> {
         try {
-            const request = pool.request();
-            request.input('userId', userId);
-            
-            const result = await request.query(`
-                SELECT RolUtilizator 
-                FROM Utilizatori 
-                WHERE IdUtilizator = @userId AND StatusUtilizator = 'Activ'
-            `);
-            
-            return result.recordset.length > 0 && result.recordset[0].RolUtilizator === 'MASTER';
+            const db = await getDatabase();
+            const row = await db.get(`SELECT RolUtilizator FROM Utilizatori WHERE IdUtilizator = ? AND StatusUtilizator = 'Activ'`, userId);
+            return !!row && row.RolUtilizator === 'MASTER';
             
         } catch (error) {
             console.error('❌ MASTER-PERM: Error verifying MASTER role:', error);
@@ -285,16 +253,9 @@ export class MasterPermissionsService {
      */
     private static async verifyContabilExists(idContabil: string): Promise<boolean> {
         try {
-            const request = pool.request();
-            request.input('idContabil', idContabil);
-            
-            const result = await request.query(`
-                SELECT IdContabil 
-                FROM Contabili 
-                WHERE IdContabil = @idContabil AND StatusContabil = 'Activ'
-            `);
-            
-            return result.recordset.length > 0;
+            const db = await getDatabase();
+            const row = await db.get(`SELECT IdContabil FROM Contabili WHERE IdContabil = ? AND StatusContabil = 'Activ'`, idContabil);
+            return !!row;
             
         } catch (error) {
             console.error('❌ MASTER-PERM: Error verifying contabil exists:', error);
@@ -311,25 +272,20 @@ export class MasterPermissionsService {
         newPermissions: ContabilPermissions
     ): Promise<void> {
         try {
-            const request = pool.request();
-            request.input('masterId', masterId);
-            request.input('idContabil', idContabil);
-            request.input('actiune', 'MODIFICARE_PERMISIUNI');
-            request.input('detalii', JSON.stringify({
-                contabil: idContabil,
-                permisiuni_noi: newPermissions,
-                timestamp: new Date()
-            }));
-            request.input('dataCreare', new Date());
-            
-            // Insert into activity log if table exists
-            await request.query(`
-                IF EXISTS (SELECT * FROM sys.tables WHERE name = 'JurnalActivitate')
-                BEGIN
-                    INSERT INTO JurnalActivitate (IdUtilizator, TipActiune, DetaliiActiune, DataActiune)
-                    VALUES (@masterId, @actiune, @detalii, @dataCreare)
-                END
-            `);
+            const db = await getDatabase();
+            // SQLite doesn't have sys.tables; attempt insert and swallow error if table missing
+            try {
+                await db.run(
+                    `INSERT INTO JurnalActivitate (IdUtilizator, TipActiune, DetaliiActiune, DataActiune)
+                     VALUES (?, ?, ?, ?)`,
+                    masterId,
+                    'MODIFICARE_PERMISIUNI',
+                    JSON.stringify({ contabil: idContabil, permisiuni_noi: newPermissions, timestamp: new Date().toISOString() }),
+                    new Date().toISOString()
+                );
+            } catch (e) {
+                // ignore if table absent
+            }
             
         } catch (error) {
             console.error('❌ MASTER-PERM: Error logging permission change:', error);

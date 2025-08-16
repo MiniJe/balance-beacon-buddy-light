@@ -7,7 +7,7 @@ export interface JurnalEmail {
     EmailDestinatar: string;
     SubiectEmail: string;
     ContinutEmail?: string;
-    TipEmail: 'CONFIRMARE' | 'REMINDER' | 'TEST' | 'GENERAL';
+    TipEmail: 'CONFIRMARE' | 'REMINDER' | 'TEST' | 'GENERAL' | 'FISE_PARTENER';
     
     // Informații despre trimitere
     DataTrimitere: Date;

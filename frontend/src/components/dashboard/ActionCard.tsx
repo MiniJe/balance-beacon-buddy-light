@@ -1,12 +1,12 @@
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 // Ensure correct path for utils
 import { cn } from "@/lib/utils"; 
 import { Link } from "react-router-dom";
 
 interface ActionCardProps {
-  title: string;
+  title: React.ReactNode;
   description: string;
   actionLabel: string;
   actionHref: string;
@@ -31,7 +31,7 @@ export function ActionCard({
     )}>
       <CardHeader className="pb-3">
         {icon && <div className="mb-2 text-primary">{icon}</div>}
-        <CardTitle className="flex justify-between items-center">
+  <CardTitle className="flex justify-between items-center leading-tight whitespace-pre-line">
           {title}
         </CardTitle>
         <CardDescription>{description}</CardDescription>

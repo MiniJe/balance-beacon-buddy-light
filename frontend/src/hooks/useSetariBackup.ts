@@ -28,18 +28,7 @@ interface BackupStats {
   avgDurationSeconds: number;
 }
 
-interface BackupHistoryResponse {
-  success: boolean;
-  backups: BackupRecord[];
-  total: number;
-  message?: string;
-}
-
-interface BackupStatsResponse {
-  success: boolean;
-  stats: BackupStats;
-  message?: string;
-}
+// Note: Backend responses are handled inline; specific response interfaces removed to avoid unused types
 
 export const useSetariBackup = () => {
   const [backupHistory, setBackupHistory] = useState<BackupRecord[]>([]);
@@ -62,7 +51,7 @@ export const useSetariBackup = () => {
   });
 
   // Încarcă istoricul backup-urilor
-  const loadBackupHistory = async (limit: number = 20, offset: number = 0) => {
+  const loadBackupHistory = async (_limit: number = 20, _offset: number = 0) => {
     try {
       setLoading(true);
       setError(null);
@@ -162,7 +151,7 @@ export const useSetariBackup = () => {
     }
   };
   // Descarcă un backup
-  const downloadBackup = async (backupId: string, type?: 'sql' | 'blob' | 'full') => {
+  const downloadBackup = async (backupId: string, _type?: 'sql' | 'blob' | 'full') => {
     try {
       const url = `${API_BASE}/download/${backupId}`;
         

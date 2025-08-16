@@ -26,7 +26,7 @@ export const PartnerFormDialog = ({
   editPartenerId,
   saving
 }: PartnerFormDialogProps) => {
-  const { user, isMaster } = useAuth();
+  const { isMaster } = useAuth();
 
   if (!editPartener) {
     return null;
@@ -60,14 +60,12 @@ export const PartnerFormDialog = ({
     try {
       const partenerService = await import('@/services/partener.service');
       await partenerService.partenerService.deletePartener(editPartenerId);
-      const { toast } = await import('sonner');
       console.log("Partenerul a fost șters cu succes");
       onClose();
       // Trigger a reload of the partners list
       window.dispatchEvent(new CustomEvent('partnerDeleted'));
     } catch (error) {
       console.error('Eroare la ștergerea partenerului:', error);
-      const { toast } = await import('sonner');
       console.error(error instanceof Error ? error.message : 'Eroare la ștergerea partenerului');
     }
   };

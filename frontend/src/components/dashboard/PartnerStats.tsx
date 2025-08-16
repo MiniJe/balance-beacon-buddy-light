@@ -1,8 +1,6 @@
 
 import { CheckCircle, XCircle, Clock, UserRound } from "lucide-react";
 import { StatCard } from "./StatCard";
-// Ensure correct path for types
-import { PartnerStatsData } from "../../types/dashboard";
 
 interface StatsData {
   totalPartners: number;

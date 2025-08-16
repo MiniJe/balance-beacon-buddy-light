@@ -3,6 +3,54 @@ import { getDatabase } from '../config/sqlite';
 import crypto from 'crypto';
 
 export class EmailTrackingService {
+    // Asigură existența tabelelor pentru action tokens și events
+    static async ensureSchema() {
+        try {
+            const db = await getDatabase();
+            await db.run(`
+                CREATE TABLE IF NOT EXISTS EmailTrackingTokens (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    IdJurnalEmail TEXT NOT NULL,
+                    TrackingToken TEXT NOT NULL UNIQUE,
+                    CreatedAt TEXT NOT NULL
+                )
+            `);
+            await db.run(`
+                CREATE TABLE IF NOT EXISTS EmailTrackingOpens (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    IdJurnalEmail TEXT NOT NULL,
+                    IpAddress TEXT,
+                    UserAgent TEXT,
+                    OpenedAt TEXT NOT NULL
+                )
+            `);
+            await db.run(`
+                CREATE TABLE IF NOT EXISTS EmailActionTokens (
+                    Token TEXT PRIMARY KEY,
+                    IdJurnalEmail TEXT NOT NULL,
+                    Action TEXT NOT NULL, -- CONFIRM | WILL_RESPOND
+                    CreatedAt TEXT NOT NULL,
+                    FirstHitAt TEXT,
+                    UsedAt TEXT,
+                    UsedIp TEXT,
+                    UsedUserAgent TEXT
+                )
+            `);
+            await db.run(`
+                CREATE TABLE IF NOT EXISTS EmailActionEvents (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    IdJurnalEmail TEXT NOT NULL,
+                    Token TEXT,
+                    Action TEXT NOT NULL,
+                    IpAddress TEXT,
+                    UserAgent TEXT,
+                    CreatedAt TEXT NOT NULL
+                )
+            `);
+        } catch (e) {
+            console.error('❌ Eroare ensureSchema EmailAction*:', e);
+        }
+    }
 
     /**
      * Generează un tracking pixel pentru un email
@@ -22,10 +70,125 @@ export class EmailTrackingService {
     }
 
     /**
+     * Generează butoane de acțiune (confirmare / va răspunde) pentru email
+     */
+    static async generateActionButtons(idJurnalEmail: string, baseUrl: string): Promise<string> {
+        await this.ensureSchema();
+        const tokenConfirm = crypto.randomBytes(24).toString('hex');
+        const tokenWill = crypto.randomBytes(24).toString('hex');
+        const now = new Date().toISOString();
+        try {
+            const db = await getDatabase();
+            await db.run(`INSERT INTO EmailActionTokens (Token, IdJurnalEmail, Action, CreatedAt) VALUES (?, ?, 'CONFIRM', ?)`, [tokenConfirm, idJurnalEmail, now]);
+            await db.run(`INSERT INTO EmailActionTokens (Token, IdJurnalEmail, Action, CreatedAt) VALUES (?, ?, 'WILL_RESPOND', ?)`, [tokenWill, idJurnalEmail, now]);
+        } catch (e) {
+            console.error('❌ Eroare la salvarea token-urilor acțiune:', e);
+        }
+        const urlConfirm = `${baseUrl}/api/email-tracking/confirm/${tokenConfirm}`;
+        const urlWill = `${baseUrl}/api/email-tracking/will-respond/${tokenWill}`;
+        return `
+        <div style="margin:16px 0;padding:12px;border:1px solid #e5e7eb;border-radius:10px;background:#f8fafc">
+          <div style="font-size:13px;color:#334155;margin-bottom:8px;font-weight:600">Confirmare rapidă</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <a href="${urlConfirm}" style="background:#16a34a;color:#fff;text-decoration:none;padding:8px 12px;border-radius:8px;font-weight:600;display:inline-block">CONFIRMĂ PRIMIREA</a>
+            <a href="${urlWill}" style="background:#2563eb;color:#fff;text-decoration:none;padding:8px 12px;border-radius:8px;font-weight:600;display:inline-block">VOM RĂSPUNDE ÎN SCURT TIMP</a>
+          </div>
+        </div>`;
+    }
+
+    static async recordActionHit(token: string, action: 'CONFIRM'|'WILL_RESPOND', req: Request) {
+        try {
+            await this.ensureSchema();
+            const db = await getDatabase();
+            const row = await db.get(`SELECT * FROM EmailActionTokens WHERE Token = ? AND Action = ?`, [token, action]);
+            if (!row) return { ok: false };
+            const now = new Date().toISOString();
+            if (!row.FirstHitAt) {
+                await db.run(`UPDATE EmailActionTokens SET FirstHitAt = ? WHERE Token = ?`, [now, token]);
+            }
+            await db.run(`INSERT INTO EmailActionEvents (IdJurnalEmail, Token, Action, IpAddress, UserAgent, CreatedAt) VALUES (?, ?, ?, ?, ?, ?)`, [row.IdJurnalEmail, token, `${action}_HIT`, (req.ip || ''), (req.get('User-Agent') || ''), now]);
+            return { ok: true, idJurnalEmail: row.IdJurnalEmail };
+        } catch (e) {
+            console.error('❌ Eroare recordActionHit:', e);
+            return { ok: false };
+        }
+    }
+
+    static async recordActionConfirm(token: string, action: 'CONFIRM'|'WILL_RESPOND', req: Request) {
+        try {
+            await this.ensureSchema();
+            const db = await getDatabase();
+            const row = await db.get(`SELECT * FROM EmailActionTokens WHERE Token = ? AND Action = ?`, [token, action]);
+            if (!row) return { ok: false };
+            const now = new Date().toISOString();
+            await db.run(`UPDATE EmailActionTokens SET UsedAt = ?, UsedIp = ?, UsedUserAgent = ? WHERE Token = ?`, [now, (req.ip || ''), (req.get('User-Agent') || ''), token]);
+            await db.run(`INSERT INTO EmailActionEvents (IdJurnalEmail, Token, Action, IpAddress, UserAgent, CreatedAt) VALUES (?, ?, ?, ?, ?, ?)`, [row.IdJurnalEmail, token, `${action}_CONFIRMED`, (req.ip || ''), (req.get('User-Agent') || ''), now]);
+            // Actualizează JurnalEmail: marchează răspunsul și citirea (dacă lipsește)
+            const tipRaspuns = action === 'CONFIRM' ? 'CONFIRMED' : 'GENERAL_RESPONSE';
+            await db.run(`
+                UPDATE JurnalEmail
+                SET 
+                  DataRaspuns = COALESCE(DataRaspuns, ?),
+                  TipRaspuns = ?,
+                  StatusRaspuns = 'RECEIVED',
+                  StatusTrimitere = 'RESPONDED',
+                  DataCitire = COALESCE(DataCitire, ?)
+                WHERE IdJurnalEmail = ?
+            `, [now, tipRaspuns, now, row.IdJurnalEmail]);
+            return { ok: true, idJurnalEmail: row.IdJurnalEmail };
+        } catch (e) {
+            console.error('❌ Eroare recordActionConfirm:', e);
+            return { ok: false };
+        }
+    }
+
+    /**
+     * Reconciliere stări pentru un email deja trimis (post-factum)
+     * Actualizează JurnalEmail pe baza EmailActionEvents și deschiderilor
+     */
+    static async reconcileEmailState(idJurnalEmail: string): Promise<{ updated: boolean }>{
+        try {
+            await this.ensureSchema();
+            const db = await getDatabase();
+            const confirm = await db.get(`SELECT MIN(CreatedAt) as At FROM EmailActionEvents WHERE IdJurnalEmail = ? AND Action = 'CONFIRM_CONFIRMED'`, [idJurnalEmail]);
+            const will = await db.get(`SELECT MIN(CreatedAt) as At FROM EmailActionEvents WHERE IdJurnalEmail = ? AND Action = 'WILL_RESPOND_CONFIRMED'`, [idJurnalEmail]);
+            const anyHit = await db.get(`SELECT MIN(CreatedAt) as At FROM EmailActionEvents WHERE IdJurnalEmail = ? AND Action IN ('CONFIRM_HIT','WILL_RESPOND_HIT')`, [idJurnalEmail]);
+            const anyOpen = await db.get(`SELECT MIN(OpenedAt) as At FROM EmailTrackingOpens WHERE IdJurnalEmail = ?`, [idJurnalEmail]);
+
+            let updated = false;
+            if (confirm?.At || will?.At || anyHit?.At || anyOpen?.At) {
+                const nowReadAt = anyOpen?.At || anyHit?.At || null;
+                const raspAt = confirm?.At || will?.At || null;
+                const tipRaspuns = confirm?.At ? 'CONFIRMED' : (will?.At ? 'GENERAL_RESPONSE' : null);
+                const sets: string[] = [];
+                const vals: any[] = [];
+                if (raspAt && tipRaspuns) {
+                    sets.push('DataRaspuns = COALESCE(DataRaspuns, ?)', 'TipRaspuns = ?', `StatusRaspuns = 'RECEIVED'`, `StatusTrimitere = 'RESPONDED'`);
+                    vals.push(raspAt, tipRaspuns);
+                }
+                if (nowReadAt) {
+                    sets.push('DataCitire = COALESCE(DataCitire, ?)');
+                    vals.push(nowReadAt);
+                }
+                if (sets.length > 0) {
+                    vals.push(idJurnalEmail);
+                    await db.run(`UPDATE JurnalEmail SET ${sets.join(', ')} WHERE IdJurnalEmail = ?`, vals);
+                    updated = true;
+                }
+            }
+            return { updated };
+        } catch (e) {
+            console.error('❌ Eroare reconcileEmailState:', e);
+            return { updated: false };
+        }
+    }
+
+    /**
      * Salvează token-ul de tracking în baza de date
      */
     private static async saveTrackingToken(idJurnalEmail: string, trackingToken: string): Promise<void> {
         try {
+            await this.ensureSchema();
             const db = await getDatabase();
             await db.run(`
                 INSERT INTO EmailTrackingTokens (IdJurnalEmail, TrackingToken, CreatedAt)
@@ -289,6 +452,46 @@ export class EmailTrackingController {
         }
     }
 
+    // Afișează pagina de confirmare cu buton explicit (pentru evitarea click-urilor automate)
+    private renderActionPage(title: string, description: string, confirmUrl: string) {
+        return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
+        <style>body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#f6f7fb;margin:0;padding:40px}
+        .card{max-width:520px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.06);padding:24px}
+        .h{font-weight:700;color:#111827;margin:0 0 6px}
+        .p{color:#6b7280;margin:0 0 16px}
+        .btn{display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600}
+        .ok{background:#16a34a}
+        </style></head><body>
+        <div class="card"><h1 class="h">${title}</h1><p class="p">${description}</p><a class="btn ok" href="${confirmUrl}">Confirmă</a></div>
+        </body></html>`;
+    }
+
+    async confirmIntent(req: Request, res: Response): Promise<void> {
+        const { token } = req.params;
+        await EmailTrackingService.recordActionHit(token, 'CONFIRM', req);
+        const url = `${(process.env.BASE_URL || '')}/api/email-tracking/confirm/ok/${token}`;
+        res.status(200).send(this.renderActionPage('Confirmare primire', 'Te rugăm să confirmi că ai primit acest e-mail.', url));
+    }
+
+    async confirmFinalize(req: Request, res: Response): Promise<void> {
+        const { token } = req.params;
+        const ok = await EmailTrackingService.recordActionConfirm(token, 'CONFIRM', req);
+        res.status(200).send(this.renderActionPage('Mulțumim!', 'Confirmarea a fost înregistrată.', '#'));
+    }
+
+    async willRespondIntent(req: Request, res: Response): Promise<void> {
+        const { token } = req.params;
+        await EmailTrackingService.recordActionHit(token, 'WILL_RESPOND', req);
+        const url = `${(process.env.BASE_URL || '')}/api/email-tracking/will-respond/ok/${token}`;
+        res.status(200).send(this.renderActionPage('Vom răspunde în scurt timp', 'Confirmă intenția de a răspunde în curând.', url));
+    }
+
+    async willRespondFinalize(req: Request, res: Response): Promise<void> {
+        const { token } = req.params;
+        const ok = await EmailTrackingService.recordActionConfirm(token, 'WILL_RESPOND', req);
+        res.status(200).send(this.renderActionPage('Mulțumim!', 'Am înregistrat intenția de a răspunde.', '#'));
+    }
+
     /**
      * Obține statistici de tracking pentru un email
      * GET /api/email-tracking/stats/:idJurnalEmail
@@ -365,6 +568,21 @@ export class EmailTrackingController {
                 success: false,
                 error: 'Eroare la generarea raportului de tracking'
             });
+        }
+    }
+
+    /**
+     * Reconciliere manuală pentru un email (admin)
+     * GET /api/email-tracking/reconcile/:idJurnalEmail
+     */
+    async reconcile(req: Request, res: Response): Promise<void> {
+        try {
+            const { idJurnalEmail } = req.params;
+            const result = await EmailTrackingService.reconcileEmailState(idJurnalEmail);
+            res.json({ success: true, data: result });
+        } catch (error) {
+            console.error('❌ Eroare la reconciliere:', error);
+            res.status(500).json({ success: false, error: 'Eroare la reconciliere' });
         }
     }
 

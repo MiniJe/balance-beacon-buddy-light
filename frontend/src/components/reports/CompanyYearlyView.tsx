@@ -1,10 +1,9 @@
-
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CalendarDays, Filter, Download, Calendar, DollarSign, User, MessageSquare, CheckCircle, XCircle, Clock } from "lucide-react";
+import { CalendarDays, Filter, Download, Calendar, DollarSign, User, MessageSquare } from "lucide-react";
 import { ConfirmationRequest } from "@/types/request";
 // Ensure correct paths for ui components and utils
 import { Badge } from "@/components/ui/badge"; 

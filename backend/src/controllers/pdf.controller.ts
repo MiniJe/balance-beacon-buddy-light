@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { pdfService } from '../services/pdf.service';
+import { getDatabase } from '../config/sqlite';
 import { ApiResponseHelper } from '../types/api.types';
 
 class PdfController {
@@ -23,11 +24,52 @@ class PdfController {
       
       const options = {
         title: req.body.title || 'LISTĂ PARTENERI',
-        orientation: req.body.orientation || 'landscape'
+        orientation: req.body.orientation || 'landscape',
+        sessionInfo: req.body.sessionInfo || undefined,
       };
       
       console.log(`🧩 Obțin PDF pentru ${partners.length} parteneri cu opțiunile:`, options);
-      const pdfBuffer = await pdfService.generatePartnersPDF(partners, options);
+      // Îmbogățește datele partenerilor cu CUI, data trimitere, nume fișier și data răspuns
+      const db = await getDatabase();
+      const enriched = await Promise.all(partners.map(async (p: any) => {
+        const id = p.idPartener || p.IdPartener;
+        if (!id) return p;
+        try {
+          const part = await db.get(
+            `SELECT CUIPartener as cuiPartener, NumePartener as numePartener
+             FROM Parteneri WHERE IdPartener = ? LIMIT 1`,
+            id
+          );
+          const lastEmail = await db.get(
+            `SELECT DataTrimitere, DataRaspuns
+             FROM JurnalEmail
+             WHERE IdPartener = ? AND TipEmail = 'CONFIRMARE'
+             ORDER BY datetime(DataTrimitere) DESC
+             LIMIT 1`,
+            id
+          );
+          const attach = await db.get(
+            `SELECT NumeFisier, DataTrimitere as DataTrimitereCerere
+             FROM JurnalCereriConfirmare
+             WHERE IdPartener = ?
+             ORDER BY datetime(DataTrimitere) DESC
+             LIMIT 1`,
+            id
+          );
+          return {
+            ...p,
+            numePartener: p.numePartener || part?.numePartener,
+            cuiPartener: p.cuiPartener || part?.cuiPartener,
+            dataTrimitere: p.dataTrimitere || lastEmail?.DataTrimitere || attach?.DataTrimitereCerere,
+            numeFisier: p.numeFisier || attach?.NumeFisier,
+            dataRaspuns: p.dataRaspuns || lastEmail?.DataRaspuns,
+          };
+        } catch {
+          return p;
+        }
+      }));
+
+      const pdfBuffer = await pdfService.generatePartnersPDF(enriched, options);
       
       // Setează headerele pentru descărcare
       res.setHeader('Content-Length', pdfBuffer.length);
@@ -53,7 +95,7 @@ class PdfController {
    */
   async generatePrintPdf(req: Request, res: Response): Promise<void> {
     try {
-      const { partners, options } = req.body;
+      const { partners } = req.body;
       
       if (!Array.isArray(partners)) {
         const errorResponse = ApiResponseHelper.validationError(
@@ -64,7 +106,48 @@ class PdfController {
         return;
       }
       
-      const pdfBuffer = await pdfService.generatePrintPDF(partners, options);
+      // Enrich la fel ca în download
+      const db = await getDatabase();
+      const enriched = await Promise.all(partners.map(async (p: any) => {
+        const id = p.idPartener || p.IdPartener;
+        if (!id) return p;
+        try {
+          const part = await db.get(
+            `SELECT CUIPartener as cuiPartener, NumePartener as numePartener
+             FROM Parteneri WHERE IdPartener = ? LIMIT 1`, id);
+          const lastEmail = await db.get(
+            `SELECT DataTrimitere, DataRaspuns
+             FROM JurnalEmail
+             WHERE IdPartener = ? AND TipEmail = 'CONFIRMARE'
+             ORDER BY datetime(DataTrimitere) DESC
+             LIMIT 1`, id);
+          const attach = await db.get(
+            `SELECT NumeFisier, DataTrimitere as DataTrimitereCerere
+             FROM JurnalCereriConfirmare
+             WHERE IdPartener = ?
+             ORDER BY datetime(DataTrimitere) DESC
+             LIMIT 1`, id);
+          return {
+            ...p,
+            numePartener: p.numePartener || part?.numePartener,
+            cuiPartener: p.cuiPartener || part?.cuiPartener,
+            dataTrimitere: p.dataTrimitere || lastEmail?.DataTrimitere || attach?.DataTrimitereCerere,
+            numeFisier: p.numeFisier || attach?.NumeFisier,
+            dataRaspuns: p.dataRaspuns || lastEmail?.DataRaspuns,
+          };
+        } catch {
+          return p;
+        }
+      }));
+
+      // Construiește opțiunile: acceptă fie req.body.options, fie câmpuri la rădăcină
+      const options = req.body.options || {
+        title: req.body.title || 'Lista pentru Printare',
+        orientation: req.body.orientation || 'landscape',
+        sessionInfo: req.body.sessionInfo || undefined,
+      };
+
+      const pdfBuffer = await pdfService.generatePrintPDF(enriched, options);
       
       res.setHeader('Content-Length', pdfBuffer.length);
       res.setHeader('Content-Type', 'application/pdf');
@@ -87,7 +170,7 @@ class PdfController {
    */
   async generateEmailPdf(req: Request, res: Response): Promise<void> {
     try {
-      const { partners, emailData } = req.body;
+  const { partners, emailData, sessionInfo } = req.body;
       
       if (!Array.isArray(partners) || !emailData) {
         const errorResponse = ApiResponseHelper.validationError(
@@ -106,9 +189,44 @@ class PdfController {
       });
       
       // Generăm PDF-ul
-      const pdfBuffer = await pdfService.generatePartnersPDF(partners, { 
+      // Enrich înainte de generare
+      const db = await getDatabase();
+      const enriched = await Promise.all(partners.map(async (p: any) => {
+        const id = p.idPartener || p.IdPartener;
+        if (!id) return p;
+        try {
+          const part = await db.get(
+            `SELECT CUIPartener as cuiPartener, NumePartener as numePartener
+             FROM Parteneri WHERE IdPartener = ? LIMIT 1`, id);
+          const lastEmail = await db.get(
+            `SELECT DataTrimitere, DataRaspuns
+             FROM JurnalEmail
+             WHERE IdPartener = ? AND TipEmail = 'CONFIRMARE'
+             ORDER BY datetime(DataTrimitere) DESC
+             LIMIT 1`, id);
+          const attach = await db.get(
+            `SELECT NumeFisier, DataTrimitere as DataTrimitereCerere
+             FROM JurnalCereriConfirmare
+             WHERE IdPartener = ?
+             ORDER BY datetime(DataTrimitere) DESC
+             LIMIT 1`, id);
+          return {
+            ...p,
+            numePartener: p.numePartener || part?.numePartener,
+            cuiPartener: p.cuiPartener || part?.cuiPartener,
+            dataTrimitere: p.dataTrimitere || lastEmail?.DataTrimitere || attach?.DataTrimitereCerere,
+            numeFisier: p.numeFisier || attach?.NumeFisier,
+            dataRaspuns: p.dataRaspuns || lastEmail?.DataRaspuns,
+          };
+        } catch {
+          return p;
+        }
+      }));
+
+      const pdfBuffer = await pdfService.generatePartnersPDF(enriched, { 
         title: emailData.subject,
-        orientation: 'landscape'
+        orientation: 'landscape',
+        sessionInfo: sessionInfo || undefined,
       });
       const filename = emailData.attachmentName || `lista-parteneri-${Date.now()}.pdf`;
       

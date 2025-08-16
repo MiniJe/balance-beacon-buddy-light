@@ -201,7 +201,7 @@ const processMonthlyData = (emails: any[]): MonthlyData[] => {
 
   // Convertește în format pentru grafic
   return Object.entries(monthlyStats).map(([monthKey, stats]) => {
-    const [year, month] = monthKey.split('-');
+    const [_year, month] = monthKey.split('-');
     const monthIndex = parseInt(month) - 1;
     return {
       name: months[monthIndex],
@@ -294,7 +294,7 @@ const processTeamPerformance = (emails: any[]): TeamPerformance[] => {
   }));
 };
 
-const processRequestTypeStats = (stats: any): RequestTypeStats[] => {
+const processRequestTypeStats = (_stats: any): RequestTypeStats[] => {
   return [
     { type: 'Cereri simple', avgTime: 2.3 },
     { type: 'Cereri complexe', avgTime: 4.7 },

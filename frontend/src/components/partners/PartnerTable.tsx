@@ -8,7 +8,7 @@ interface PartnerTableProps {
   parteneri: Partener[];
   loading: boolean;
   searchTerm: string;
-  sortOptions: PartenerSortOptions;
+  sortOptions?: PartenerSortOptions;
   selectedPartnerIds: Set<string>;
   onSortChange: (field: PartenerSortOptions['sortBy']) => void;
   getSortIcon: (field: string) => React.ReactNode;
@@ -22,7 +22,6 @@ export const PartnerTable = ({
   parteneri,
   loading,
   searchTerm,
-  sortOptions,
   selectedPartnerIds,
   onSortChange,
   getSortIcon,

@@ -1,4 +1,4 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+// Tabs imports removed - not used in current layout
 
 // Import refactored components
 import { useRequestSettings } from "@/hooks/useRequestSettings";
@@ -16,11 +16,9 @@ const RequestSettings = () => {
     setStep,
     partnerCategory,
     setPartnerCategory,
-    partners,
     filteredPartners,
     loading,
     error,
-    setError,
     date,
     setDate,
     emailSubject,

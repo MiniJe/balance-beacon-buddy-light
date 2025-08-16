@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Users, Building2, Mail, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 interface SoldPartener {
   idPartener: string;

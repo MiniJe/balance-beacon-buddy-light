@@ -85,18 +85,7 @@ interface StatisticiCereriConfirmareResponse {
   message?: string;
 }
 
-interface PartenerResponse {
-  success: boolean;
-  data: Array<{
-    IdPartener: string;
-    NumePartener: string;
-    EmailPartener: string;
-    TipPartener: string;
-    StatusPartener: string;
-    CreatLa: string;
-    // alte câmpuri...
-  }>;
-}
+// Removed unused PartenerResponse interface
 
 interface JurnalEmailPartnerData {
   success: boolean;
@@ -490,24 +479,7 @@ class ReportsService {
     }
   }
 
-  /**
-   * Obține date despre parteneri din tabelul Parteneri (fallback)
-   */
-  private async getParteneriData(): Promise<PartenerResponse> {
-    const response = await axios.get<PartenerResponse>(
-      `${API_URL}/api/parteneri`,
-      { 
-        headers: this.getAuthHeaders(),
-        timeout: 30000
-      }
-    );
-    
-    if (!response.data.success) {
-      throw new Error('Eroare la obținerea datelor parteneri');
-    }
-    
-    return response.data;
-  }
+  // Removed unused getParteneriData fallback method
 
   /**
    * Procesează statisticile companiilor bazat pe datele REALE din JurnalEmail cu calculare directă din emailuri
@@ -597,7 +569,7 @@ class ReportsService {
         // Calculează statistici REALE din emailurile grupate
         const partnerEmails = emailsByPartner[partnerId] || [];
         const successEmails = partnerEmails.filter(e => e.StatusTrimitere === 'SUCCESS');
-        const pendingEmails = partnerEmails.filter(e => e.StatusTrimitere === 'PENDING');
+  // const pendingEmails = partnerEmails.filter(e => e.StatusTrimitere === 'PENDING');
         const failedEmails = partnerEmails.filter(e => e.StatusTrimitere !== 'SUCCESS' && e.StatusTrimitere !== 'PENDING');
         
         // LOGICA CORECTĂ DE BUSINESS:
@@ -689,68 +661,7 @@ class ReportsService {
     }
   }
 
-  /**
-   * Procesează statisticile companiilor combinând datele din cereri și parteneri (fallback method)
-   */
-  private async processCompanyStats(
-    cereriStats: StatisticiCereriConfirmareResponse['data'],
-    parteneri: PartenerResponse['data']
-  ): Promise<CompanyStats[]> {
-    console.log('🔍 Procesare statistici companii:', {
-      totalParteneri: parteneri.length,
-      primeliParteneri: parteneri.slice(0, 3).map(p => ({ 
-        id: p.IdPartener, 
-        nume: p.NumePartener,
-        hasNume: !!p.NumePartener,
-        fullObject: p // adaugă obiectul complet pentru debugging
-      })),
-      cereriStats: {
-        totalCereri: cereriStats.totalCereri,
-        rataSucces: cereriStats.rataSucces,
-        timpMediuRaspuns: cereriStats.timpMediuRaspuns
-      }
-    });
-
-    // Pentru fiecare partener, calculează statisticile
-    return parteneri.slice(0, 10).map((partener, index) => {
-      // Mock data bazat pe statisticile generale - în realitate ar trebui să faci query-uri specifice per partener
-      const safeParteneri = Math.max(parteneri.length, 1); // evită împărțirea la 0
-      const safeTotalCereri = Math.max(cereriStats.totalCereri || 0, 1);
-      const safeRataSucces = Math.max(cereriStats.rataSucces || 50, 0);
-      const safeTimpMediu = Math.max(cereriStats.timpMediuRaspuns || 72, 1);
-      
-      // ELIMINAT: Math.random() și variații artificiale - folosesc doar calcule deterministe pe date reale
-      const totalRequests = Math.floor(safeTotalCereri / safeParteneri); // Calculat strict din statistici reale
-      const successfulRequests = Math.floor(totalRequests * (safeRataSucces / 100));
-      const pendingRequests = Math.max(totalRequests - successfulRequests, 0);
-      
-      // Verifică că avem date valide pentru partener
-      const partnerId = partener.IdPartener || `partner_${index + 1}`;
-      const partnerName = partener.NumePartener || `Partener ${partnerId}`;
-      
-      const companyData: CompanyStats = {
-        id: partnerId,
-        name: partnerName,
-        totalRequests,
-        successfulRequests,
-        pendingRequests,
-        avgResponseTime: safeTimpMediu / 24, // convertește ore în zile
-        lastRequestDate: new Date(Date.now() - (index + 1) * 2 * 24 * 60 * 60 * 1000).toISOString(), // Distribuție deterministă în timp (2 zile interval)
-        status: (successfulRequests / Math.max(totalRequests, 1)) > 0.8 ? 'active' : 'warning'
-      };
-
-      // Log pentru debugging
-      if (index < 3) {
-        console.log(`📊 Companie ${index + 1}:`, { 
-          id: companyData.id, 
-          name: companyData.name, 
-          hasName: !!companyData.name 
-        });
-      }
-
-      return companyData;
-    });
-  }
+  // Removed unused processCompanyStats fallback method
 
   /**
    * Generează date pentru performanța echipei DOAR pe baza datelor reale

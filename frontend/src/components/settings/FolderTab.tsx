@@ -1,9 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 import { FolderOpen, FolderPlus, RefreshCw, Settings, FileText, Archive, PenTool, Image } from "lucide-react";
 import { ReloadIcon } from "@radix-ui/react-icons";
 import { useFolderSettings, type FolderSettings } from "@/hooks/useFolderSettings";
@@ -17,8 +16,6 @@ export const FolderTab = () => {
     error,
     loadFolderSettings,
     saveFolderSettings,
-    testFolder,
-    createFolder,
     resetFolderSettings,
     validateFolderSettings
   } = useFolderSettings();

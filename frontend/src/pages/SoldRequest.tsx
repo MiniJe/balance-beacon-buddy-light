@@ -1,6 +1,6 @@
 import React from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, Send, Users, CheckCircle2 } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useSoldSettings } from "@/hooks/useSoldSettings";
@@ -64,10 +64,7 @@ export const SoldRequest: React.FC = () => {
     }
   };
 
-  const handleReset = () => {
-    resetAll();
-    setStep(1);
-  };
+  // reset handled inline via resetAll and setStep where needed
 
   const renderStepContent = () => {
     switch (step) {
@@ -117,6 +114,11 @@ export const SoldRequest: React.FC = () => {
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           Solicitare Fișe Partener
         </h1>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => { resetAll(); setStep(1); }}>
+            Reset
+          </Button>
+        </div>
       </div>
 
       {/* Error Alert */}

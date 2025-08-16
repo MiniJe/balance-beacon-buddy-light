@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Area, AreaChart } from 'recharts';
-import { TrendingUp, Clock, CheckCircle, XCircle, Loader2, RefreshCw, AlertTriangle, Users, Mail, FileText, Calendar, Activity, Database, Timer, Building2, Send } from 'lucide-react';
+import { TrendingUp, Clock, CheckCircle, XCircle, Loader2, RefreshCw, AlertTriangle, Users, Mail, Activity, Database, Building2, Send } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"; 
 import { Badge } from "@/components/ui/badge"; 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -9,9 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { reportsService, ReportsData } from '@/services/reports.service';
-
-// Interfețe pentru date - importate din service
-import { EmailStats, CompanyStats, TeamMember, MonthlyData } from '@/services/reports.service';
+import { SendPdfDialog, type EmailData } from '@/components/partners/SendPdfDialog';
+import { sesiuniService } from '@/services/sesiuni.service';
 
 const Reports = () => {
   const [activeTab, setActiveTab] = useState('overview');
@@ -19,17 +18,19 @@ const Reports = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [sendPdfDialogOpen, setSendPdfDialogOpen] = useState(false);
 
   // State pentru sortarea și filtrarea companiilor
   const [companySortFilter, setCompanySortFilter] = useState<'all' | 'sent' | 'responded' | 'no-response'>('all');
 
-  // Funcție pentru încărcarea datelor reale din Azure SQL
+  // Funcție pentru încărcarea datelor reale din backend (SQLite)
   const loadReportsData = async () => {
     setIsLoading(true);
     setError(null);
     
     try {
-      console.log('🔍 Încărcare date rapoarte din Azure SQL...');
+  console.log('🔍 Încărcare date rapoarte din sursa reală...');
       
       // Apelează serviciul pentru obținerea datelor reale
       const data = await reportsService.getReportsData();
@@ -37,7 +38,7 @@ const Reports = () => {
       setReportsData(data);
       setLastRefresh(new Date());
       
-      console.log('✅ Date rapoarte încărcate cu succes din Azure SQL:', {
+  console.log('✅ Date rapoarte încărcate cu succes:', {
         totalEmails: data.emailStats.totalSent,
         companies: data.companyStats.length,
         teamMembers: data.teamPerformance.length,
@@ -46,107 +47,16 @@ const Reports = () => {
       });
       
     } catch (err) {
-      console.error('❌ Eroare la încărcarea datelor raport din Azure SQL:', err);
+  console.error('❌ Eroare la încărcarea datelor raport:', err);
       
       const errorMessage = err instanceof Error ? err.message : 'Eroare necunoscută la încărcarea datelor';
       setError(errorMessage);
-      
-      // Opțional: încarcă date mock în caz de eroare pentru dezvoltare
-      if (import.meta.env.DEV) {
-        console.warn('🔄 Încarc date mock pentru dezvoltare...');
-        setTimeout(() => {
-          setReportsData(getMockReportsData());
-          setError(null);
-        }, 2000);
-      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Date mock pentru dezvoltare/fallback
-  const getMockReportsData = (): ReportsData => {
-    return {
-      emailStats: {
-        totalSent: 1250,
-        successfulDeliveries: 1100,
-        pendingResponses: 85,
-        failedDeliveries: 65,
-        responseRate: 78.5,
-        avgResponseTime: 3.2,
-        thisMonth: 180,
-        lastMonth: 165,
-        growth: 9.1
-      },
-      companyStats: [
-        {
-          id: '1',
-          name: 'SC ALPHA TRADE SRL',
-          totalRequests: 45,
-          successfulRequests: 38,
-          pendingRequests: 7,
-          avgResponseTime: 2.8,
-          lastRequestDate: new Date().toISOString(),
-          status: 'active'
-        },
-        {
-          id: '2', 
-          name: 'BETA LOGISTICS SA',
-          totalRequests: 32,
-          successfulRequests: 28,
-          pendingRequests: 4,
-          avgResponseTime: 3.1,
-          lastRequestDate: new Date(Date.now() - 86400000).toISOString(),
-          status: 'active'
-        },
-        {
-          id: '3',
-          name: 'GAMMA DISTRIBUTION SRL',
-          totalRequests: 28,
-          successfulRequests: 22,
-          pendingRequests: 6,
-          avgResponseTime: 4.2,
-          lastRequestDate: new Date(Date.now() - 172800000).toISOString(),
-          status: 'warning'
-        }
-      ],
-      teamPerformance: [
-        {
-          id: '1',
-          name: 'Maria Popescu',
-          emailsSent: 156,
-          avgProcessingTime: 2.5,
-          successRate: 89.2,
-          activeRequests: 12
-        },
-        {
-          id: '2',
-          name: 'Ion Georgescu',
-          emailsSent: 134,
-          avgProcessingTime: 3.1,
-          successRate: 85.7,
-          activeRequests: 8
-        },
-        {
-          id: '3',
-          name: 'Ana Marinescu',
-          emailsSent: 98,
-          avgProcessingTime: 2.8,
-          successRate: 91.5,
-          activeRequests: 6
-        }
-      ],
-      monthlyTrends: [
-        { month: 'Ian', sent: 200, delivered: 185, responded: 145, failed: 15 },
-        { month: 'Feb', sent: 220, delivered: 198, responded: 165, failed: 22 },
-        { month: 'Mar', sent: 195, delivered: 178, responded: 142, failed: 17 },
-        { month: 'Apr', sent: 240, delivered: 225, responded: 180, failed: 15 },
-        { month: 'Mai', sent: 215, delivered: 195, responded: 155, failed: 20 },
-        { month: 'Iun', sent: 180, delivered: 165, responded: 130, failed: 15 }
-      ],
-      lastUpdate: new Date().toISOString()
-    };
-  };
+  
 
   // Încărcare inițială și auto-refresh
   useEffect(() => {
@@ -167,53 +77,7 @@ const Reports = () => {
     loadReportsData();
   };
 
-  // Funcție pentru refresh cu filtre
-  const handleFilteredRefresh = async (filters?: {
-    startDate?: string;
-    endDate?: string;
-    partnerId?: string;
-  }) => {
-    if (!filters || Object.keys(filters).length === 0) {
-      return handleManualRefresh();
-    }
-
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      console.log('🔍 Refresh cu filtre:', filters);
-      
-      // Pentru filtre specifice, folosim endpoint-ul cu filtre
-      const filteredStats = await reportsService.getFilteredEmailStatistics(filters);
-      
-      if (reportsData) {
-        // Actualizează doar statisticile email, păstrează restul datelor
-        const updatedData: ReportsData = {
-          ...reportsData,
-          emailStats: {
-            ...reportsData.emailStats,
-            totalSent: filteredStats.stats.totalEmailuri,
-            successfulDeliveries: filteredStats.stats.emailuriTrimise,
-            pendingResponses: filteredStats.stats.emailuriPending,
-            failedDeliveries: filteredStats.stats.emailuriEsuate,
-            responseRate: filteredStats.stats.emailuriTrimise > 0 ? 
-              (filteredStats.stats.emailuriTrimise / Math.max(filteredStats.stats.totalEmailuri, 1)) * 100 : 0
-          },
-          lastUpdate: new Date().toISOString()
-        };
-        
-        setReportsData(updatedData);
-        setLastRefresh(new Date());
-        
-        console.log('✅ Date filtrate actualizate cu succes');
-      }
-    } catch (err) {
-      console.error('❌ Eroare la refresh cu filtre:', err);
-      setError(err instanceof Error ? err.message : 'Eroare la aplicarea filtrelor');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Refresh cu filtre (neutilizat) eliminat pentru a reduce codul mort
 
   // Funcție pentru filtrarea și sortarea companiilor
   const getFilteredAndSortedCompanies = () => {
@@ -262,25 +126,171 @@ const Reports = () => {
     return filteredCompanies;
   };
 
-  // Obține statistici pentru criteriile de filtrare cu date REALE
+  // Transformă companiile filtrate într-un format minim pentru generarea PDF-ului
+  const getExportPartnersForCurrentFilter = () => {
+    const companies = getFilteredAndSortedCompanies();
+    // Mapăm la proprietăți folosite de backend-ul de PDF (numePartener etc.)
+    return companies.map((c) => ({
+      idPartener: c.id,
+      numePartener: c.name,
+      // câmpuri opționale lăsate goale dacă nu sunt disponibile în acest context
+      cuiPartener: '',
+      telefonPartener: '',
+      emailPartener: '',
+      clientDUC: false,
+      clientDL: false,
+      furnizorDUC: false,
+      furnizorDL: false,
+    }));
+  };
+
+  const handleDownloadPdf = async () => {
+    const partners = getExportPartnersForCurrentFilter();
+    if (partners.length === 0) {
+      console.warn('Nu există parteneri pentru export în filtrul curent');
+      return;
+    }
+    setPdfLoading(true);
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const sessionInfo = {
+        idSesiune: sesiuniService.getCurrentSessionId() || undefined,
+        data: new Date().toISOString(),
+        categoria: activeTab === 'companies' ? 'cereri' : activeTab, // simplu: corelăm tabul curent sau filtrul
+      };
+      const response = await fetch(`${baseUrl}/api/pdf/download`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ partners, sessionInfo })
+      });
+      if (!response.ok) throw new Error(`Eroare HTTP: ${response.status}`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `lista-parteneri-${companySortFilter}-${Date.now()}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(link);
+      console.log(`PDF descărcat (${partners.length} parteneri)`);
+    } catch (e) {
+      console.error('Eroare la descărcarea PDF:', e);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const handlePrintPdf = async () => {
+    const partners = getExportPartnersForCurrentFilter();
+    if (partners.length === 0) {
+      console.warn('Nu există parteneri pentru export în filtrul curent');
+      return;
+    }
+    setPdfLoading(true);
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const sessionInfo = {
+        idSesiune: sesiuniService.getCurrentSessionId() || undefined,
+        data: new Date().toISOString(),
+        categoria: activeTab === 'companies' ? 'cereri' : activeTab,
+      };
+      const response = await fetch(`${baseUrl}/api/pdf/print`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ 
+          partners,
+          title: 'Lista pentru Printare',
+          orientation: 'landscape',
+          sessionInfo
+        })
+      });
+      if (!response.ok) throw new Error(`Eroare HTTP: ${response.status}`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const printWindow = window.open(url, '_blank');
+      if (printWindow) {
+        printWindow.onload = () => {
+          setTimeout(() => printWindow.print(), 800);
+        };
+      }
+      console.log(`PDF pregătit pentru printare (${partners.length} parteneri)`);
+    } catch (e) {
+      console.error('Eroare la printarea PDF:', e);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const handleEmailPdf = async (emailData: EmailData) => {
+    const partners = getExportPartnersForCurrentFilter();
+    if (partners.length === 0) {
+      console.warn('Nu există parteneri pentru export în filtrul curent');
+      return;
+    }
+    setPdfLoading(true);
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const sessionInfo = {
+        idSesiune: sesiuniService.getCurrentSessionId() || undefined,
+        data: new Date().toISOString(),
+        categoria: activeTab === 'companies' ? 'cereri' : activeTab,
+      };
+      const response = await fetch(`${baseUrl}/api/pdf/email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ 
+          partners,
+          emailData: {
+            to: emailData.emails[0],
+            cc: emailData.emails.slice(1),
+            subject: emailData.subject || 'Lista Parteneri',
+            body: emailData.message || 'Vă transmitem atașat lista de parteneri.',
+            attachmentName: `lista-parteneri-${companySortFilter}-${Date.now()}.pdf`
+          },
+          sessionInfo
+        })
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Eroare HTTP: ${response.status}`);
+      }
+      const result = await response.json();
+      if (!result.success) throw new Error(result.message || 'Eroare la trimiterea email-ului');
+      console.log(`Email trimis cu succes către ${emailData.emails.join(', ')}`);
+      setSendPdfDialogOpen(false);
+    } catch (e) {
+      console.error('Eroare la trimiterea email-ului cu PDF:', e);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  // Obține statistici pentru criteriile de filtrare folosind date REALE din SQLite via backend
   const getCompanyFilterStats = () => {
     if (!reportsData?.companyStats) return { all: 0, sent: 0, responded: 0, noResponse: 0 };
 
+    const respondedCount = reportsData.companyStats.filter(c => (c.successfulRequests || 0) > 0).length;
+    const noResponseCount = reportsData.companyStats.filter(c => (c.totalRequests || 0) > 0 && (c.successfulRequests || 0) === 0).length;
+
     const stats = {
       all: reportsData.companyStats.length,
-      // Pentru "Emailuri trimise" folosim numărul REAL de emailuri CONFIRMARE din JurnalEmail
-      sent: reportsData.emailStats?.totalSent || 0, // DATĂ REALĂ din JurnalEmail cu TipEmail='CONFIRMARE'
-      // Pentru "Au răspuns" și "Nu au răspuns" - serviciul de monitorizare nu e funcțional încă
-      responded: 0, // Setat la 0 deoarece serviciul de monitorizare nu e funcțional
-      noResponse: 0 // Setat la 0 deoarece serviciul de monitorizare nu e funcțional
+      // Pentru "Emailuri trimise" folosim numărul REAL de emailuri CONFIRMARE agregat în emailStats
+      sent: reportsData.emailStats?.totalSent || 0,
+      responded: respondedCount,
+      noResponse: noResponseCount
     };
 
-    console.log('📊 Statistici filtrare companii (cu date REALE):', {
-      all: stats.all,
-      sentEmails: stats.sent,
-      dataSource: 'JurnalEmail cu TipEmail=CONFIRMARE',
-      monitoringNote: 'Au răspuns/Nu au răspuns: serviciu de monitorizare nefuncțional'
-    });
+    console.log('📊 Statistici filtrare companii (date reale):', stats);
 
     return stats;
   };
@@ -299,7 +309,7 @@ const Reports = () => {
             </div>
             <div className="flex items-center space-x-2">
               <Database className="h-5 w-5 text-blue-600" />
-              <span className="text-sm text-gray-500">Azure SQL</span>
+              <span className="text-sm text-gray-500">SQLite</span>
             </div>
           </div>
           
@@ -310,7 +320,7 @@ const Reports = () => {
                 <div>
                   <h3 className="text-xl font-semibold text-gray-900">Se încarcă datele raportului...</h3>
                   <p className="text-gray-600 mt-2">
-                    Colectez informații din bazele de date Azure SQL
+                    Colectez informații din baza de date locală (SQLite)
                   </p>
                   <div className="flex items-center justify-center mt-4 space-x-4 text-sm text-gray-500">
                     <div className="flex items-center space-x-2">
@@ -338,9 +348,9 @@ const Reports = () => {
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h1 className="text-4xl font-bold text-gray-900">📊 Dashboard Rapoarte</h1>
+              <h1 className="text-4xl font-bold text-gray-900">Rapoarte</h1>
               <p className="text-gray-600 mt-2">
-                Problemă la încărcarea datelor din Azure SQL
+                Problemă la încărcarea datelor
               </p>
             </div>
             <Button 
@@ -361,7 +371,7 @@ const Reports = () => {
                 <p className="font-semibold">Eroare la conectarea cu baza de date:</p>
                 <p className="text-sm bg-red-50 p-3 rounded-md font-mono">{error}</p>
                 <div className="text-sm space-y-1">
-                  <p>• Verifică conexiunea la Azure SQL Database</p>
+                  <p>• Verifică accesul la baza de date locală (SQLite)</p>
                   <p>• Confirmă că serviciul backend rulează pe portul 5000</p>
                   <p>• Verifică că rutele API funcționează:</p>
                   <p className="ml-4">- <code>/api/jurnal-email/statistics</code></p>
@@ -417,14 +427,14 @@ const Reports = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3">
-              📊 Dashboard Rapoarte
+              Rapoarte
               <Badge variant="secondary" className="text-xs">
                 Live Data
               </Badge>
             </h1>
             <p className="text-gray-600 mt-2 flex items-center gap-2">
               <Activity className="h-4 w-4" />
-              Analize în timp real din Azure SQL Database
+              Analize în timp real
               <span className="text-xs text-gray-500">
                 • Ultima actualizare: {lastRefresh.toLocaleTimeString('ro-RO')}
               </span>
@@ -454,6 +464,34 @@ const Reports = () => {
               <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
               Actualizează
             </Button>
+
+            {/* Export Actions */}
+            <div className="flex items-center gap-2">
+              <Button 
+                onClick={handleDownloadPdf}
+                variant="secondary"
+                size="sm"
+                disabled={pdfLoading}
+              >
+                Descărcați PDF
+              </Button>
+              <Button 
+                onClick={handlePrintPdf}
+                variant="secondary"
+                size="sm"
+                disabled={pdfLoading}
+              >
+                Tipăriți
+              </Button>
+              <Button 
+                onClick={() => setSendPdfDialogOpen(true)}
+                variant="default"
+                size="sm"
+                disabled={pdfLoading}
+              >
+                Trimiteți pe email
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -835,7 +873,7 @@ const Reports = () => {
               <CardContent>
                 <div className="space-y-4">
                   {reportsData.teamPerformance.length > 0 ? (
-                    reportsData.teamPerformance.map((member, index) => (
+                    reportsData.teamPerformance.map((member) => (
                       <div key={member.id} className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border">
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold">
@@ -1044,6 +1082,12 @@ const Reports = () => {
 
         </Tabs>
       </div>
+      <SendPdfDialog 
+        open={sendPdfDialogOpen}
+        onClose={() => setSendPdfDialogOpen(false)}
+        selectedPartnersCount={getExportPartnersForCurrentFilter().length}
+        onSendEmail={handleEmailPdf}
+      />
     </div>
   );
 };

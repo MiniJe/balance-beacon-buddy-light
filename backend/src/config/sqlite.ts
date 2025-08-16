@@ -31,6 +31,38 @@ const initializeDatabase = async (): Promise<Database> => {
     
     // Activează foreign keys în SQLite
     await db.exec('PRAGMA foreign_keys = ON');
+
+    // Asigură migrarea minimă pentru tabelul Contabili (adăugare coloane lipsă)
+    try {
+      const contabiliCols: { name: string }[] = await db.all("PRAGMA table_info(Contabili)");
+      if (contabiliCols && contabiliCols.length) {
+        const hasTelefon = contabiliCols.some(c => c.name === 'TelefonContabil');
+        if (!hasTelefon) {
+          console.log('🛠️  Adding missing column Contabili.TelefonContabil ...');
+          await db.exec("ALTER TABLE Contabili ADD COLUMN TelefonContabil TEXT");
+        }
+        const hasDept = contabiliCols.some(c => c.name === 'DepartmentContabil');
+        if (!hasDept) {
+          console.log('🛠️  Adding missing column Contabili.DepartmentContabil ...');
+          await db.exec("ALTER TABLE Contabili ADD COLUMN DepartmentContabil TEXT");
+        }
+        // Asigură existența unei coloane de timestamp de actualizare (normalizare nume)
+        const updateColumnVariants = ['DataActualizării', 'DataActualizare', 'DataActualizarii'];
+        const hasUpdateCol = contabiliCols.some(c => updateColumnVariants.includes(c.name));
+        if (!hasUpdateCol) {
+          console.log('🛠️  Adding missing column Contabili.DataActualizare (timestamp actualizare)...');
+          try {
+            await db.exec("ALTER TABLE Contabili ADD COLUMN DataActualizare TEXT");
+          } catch (e) {
+            console.warn('⚠️  Failed adding DataActualizare column:', e);
+          }
+        }
+      } else {
+        console.warn('⚠️  PRAGMA table_info(Contabili) returned empty; table might not exist yet.');
+      }
+    } catch (schemaErr) {
+      console.warn('⚠️  Failed to run Contabili minimal schema migration (can ignore if table absent):', schemaErr);
+    }
     
     return db;
   } catch (error) {
