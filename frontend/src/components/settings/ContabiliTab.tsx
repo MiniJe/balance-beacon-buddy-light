@@ -141,7 +141,13 @@ const ContabiliTab: React.FC<ContabiliTabProps> = () => {
       RolContabil: contabil.RolContabil,
       StatusContabil: contabil.StatusContabil,
       DatăAngajareContabil: contabil.DatăAngajareContabil 
-        ? new Date(contabil.DatăAngajareContabil).toISOString().split('T')[0] 
+        ? (() => {
+            const d = new Date(contabil.DatăAngajareContabil);
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`; // local YYYY-MM-DD for input[type=date]
+          })()
         : '',
       PermisiuniAcces: contabil.PermisiuniContabil || {
         PoateModificaParteneri: false,

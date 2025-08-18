@@ -41,6 +41,11 @@ const navItems: NavItem[] = [
     href: "/jurnal-email"
   },
   {
+    title: "Email",
+    icon: Mail,
+    href: "/email"
+  },
+  {
     title: "Setări",
     icon: Settings,
     href: "/setari"

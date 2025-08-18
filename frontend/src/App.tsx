@@ -16,6 +16,7 @@ import Settings from "./pages/Settings"; // Import from the main Settings.tsx fi
 import Login from "./pages/Login";
 import SchimbareParola from "./pages/SchimbareParola";
 import NotFound from "./pages/NotFound";
+import EmailPage from "./pages/Email";
 
 // Initialize QueryClient
 const queryClient = new QueryClient();
@@ -33,6 +34,7 @@ const App = () => (
             <Route path="/cereri" element={<DashboardLayout><RequestSettings /></DashboardLayout>} />
             <Route path="/sold" element={<DashboardLayout><SoldRequest /></DashboardLayout>} />
             <Route path="/jurnal-email" element={<DashboardLayout><JurnalEmail /></DashboardLayout>} />
+            <Route path="/email" element={<DashboardLayout><EmailPage /></DashboardLayout>} />
             <Route path="/setari" element={<DashboardLayout><Settings /></DashboardLayout>} />
             <Route path="*" element={<NotFound />} />
           </Routes>

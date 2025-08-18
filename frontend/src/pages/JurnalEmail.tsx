@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { ro } from "date-fns/locale";
+import { formatLocalDateTime, parseLocalDbTimestamp, toLocalDbTimestamp } from "@/utils/datetime";
 import { 
     CalendarIcon, 
     Search, 
@@ -26,7 +27,10 @@ import {
     Send,
     Link,
     Grid3X3,
-    List
+    List,
+    ArrowUpDown,
+    ArrowUp,
+    ArrowDown
 } from "lucide-react";
 import { useJurnalEmail, type JurnalEmail, type JurnalEmailFilters } from "@/hooks/useJurnalEmail";
 
@@ -37,6 +41,7 @@ const JurnalEmailPage = () => {
         sortBy: 'DataTrimitere',
         sortOrder: 'DESC'
     });
+    const [activeTab, setActiveTab] = useState<'list' | 'stats' | 'tracking' | 'no-response'>('list');
     const [emailuri, setEmailuri] = useState<JurnalEmail[]>([]);
     const [stats, setStats] = useState<any>(null);
     const [selectedDate, setSelectedDate] = useState<Date>();
@@ -50,9 +55,8 @@ const JurnalEmailPage = () => {
     const [reminderDays, setReminderDays] = useState<number>(7);
     const [reminderType, setReminderType] = useState<'SOFT' | 'NORMAL' | 'URGENT'>('SOFT');
     // Email monitor (IMAP) helpers
-    const [checkNowResult, setCheckNowResult] = useState<{ processed: number; at: string } | null>(null);
+    const [checkNowResult, setCheckNowResult] = useState<{ processed: number; at: string; lastError?: string | null } | null>(null);
     const [responseStats, setResponseStats] = useState<any>(null);
-    const [reconciling, setReconciling] = useState(false);
     
     const { 
         loading, 
@@ -64,6 +68,20 @@ const JurnalEmailPage = () => {
         sendReminders,
         generateTrackingReport
     } = useJurnalEmail();
+
+    // Sortare pentru tab-ul "Parteneri fără răspuns"
+    type UnrespSortField = 'destinatar' | 'subiect' | 'data' | 'zile' | 'prioritate';
+    const [unrespSortBy, setUnrespSortBy] = useState<UnrespSortField>('zile');
+    const [unrespSortOrder, setUnrespSortOrder] = useState<'asc' | 'desc'>('desc');
+    const toggleUnrespSort = (field: UnrespSortField) => {
+        const newOrder = (unrespSortBy === field && unrespSortOrder === 'asc') ? 'desc' : 'asc';
+        setUnrespSortBy(field);
+        setUnrespSortOrder(newOrder);
+    };
+    const getUnrespSortIcon = (field: UnrespSortField) => {
+        if (unrespSortBy !== field) return <ArrowUpDown className="h-4 w-4" />;
+        return unrespSortOrder === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />;
+    };
 
     // Încarcă datele la mount și când se schimbă filtrele
     useEffect(() => {
@@ -88,28 +106,7 @@ const JurnalEmailPage = () => {
         }
     };
 
-    // Reconciliere per-rând eliminată (folosim acțiunea globală)
-
-    // Reconciliere pentru toate emailurile vizibile (din listă)
-    const handleReconcileAll = async () => {
-        if (!emailuri.length) return;
-        if (!confirm(`Rulez reconcilierea pentru ${emailuri.length} emailuri vizibile?`)) return;
-        setReconciling(true);
-        try {
-            const ids = emailuri.map(e => e.IdJurnalEmail);
-            const results = await Promise.allSettled(ids.map(id => fetch(`/api/email-tracking/reconcile/${id}`, {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-            }).then(r => r.json())));
-            const ok = results.filter(r => r.status === 'fulfilled' && (r as any).value?.success).length;
-            await loadData();
-            alert(`Reconciliere finalizată: ${ok}/${ids.length} reușite`);
-        } catch (e) {
-            console.error('Eroare la reconciliere în masă:', e);
-            alert('Eroare la reconcilierea în masă');
-        } finally {
-            setReconciling(false);
-        }
-    };
+    // Reconciliere per-rând eliminată (folosim acțiunea globală din monitorul IMAP)
 
     // Verificare manuală inbox (IMAP)
     const handleCheckInboxNow = async () => {
@@ -121,7 +118,8 @@ const JurnalEmailPage = () => {
             const data = await res.json();
             if (data?.success) {
                 const processed = data.processed ?? 0;
-                setCheckNowResult({ processed, at: new Date().toISOString() });
+                const now = toLocalDbTimestamp(new Date());
+                setCheckNowResult({ processed, at: now, lastError: data.lastError });
                 await loadData();
             } else {
                 alert('Verificarea inbox-ului a eșuat.');
@@ -144,6 +142,34 @@ const JurnalEmailPage = () => {
             console.error('Eroare la încărcarea statisticilor răspuns:', e);
         }
     };
+
+    // Încarcă doar lista de parteneri neresponsivi (folosită în tab-ul dedicat)
+    const loadUnresponsiveOnly = async () => {
+        try {
+            const unresponsiveResult = await getUnresponsivePartners(reminderDays);
+            if (unresponsiveResult.success) {
+                setUnresponsivePartners(unresponsiveResult.data || []);
+            }
+        } catch (error) {
+            console.error('Eroare la încărcarea partenerilor neresponsivi:', error);
+        }
+    };
+
+    // Încarcă date specifice când se schimbă tab-ul activ
+    useEffect(() => {
+        if (activeTab === 'tracking') {
+            // opțional: nu încărcăm nimic implicit aici
+        } else if (activeTab === 'no-response') {
+            loadUnresponsiveOnly();
+        }
+    }, [activeTab]);
+
+    // Reîncărcare listă când se schimbă filtrul de zile în tab-ul "Parteneri fără răspuns"
+    useEffect(() => {
+        if (activeTab === 'no-response') {
+            loadUnresponsiveOnly();
+        }
+    }, [reminderDays]);
 
     // Încarcă datele pentru tracking
     const loadTrackingData = async () => {
@@ -196,11 +222,11 @@ const JurnalEmailPage = () => {
             startOfDay.setHours(0, 0, 0, 0);
             const endOfDay = new Date(date);
             endOfDay.setHours(23, 59, 59, 999);
-            
+            // Trimitem DOAR string local de DB (YYYY-MM-DD HH:mm:ss)
             setFilters({
                 ...filters,
-                DataTrimitereStart: startOfDay.toISOString(),
-                DataTrimitereEnd: endOfDay.toISOString(),
+                DataTrimitereStart: toLocalDbTimestamp(startOfDay),
+                DataTrimitereEnd: toLocalDbTimestamp(endOfDay),
                 offset: 0
             });
         } else {
@@ -425,9 +451,9 @@ const JurnalEmailPage = () => {
             <div className="flex items-center justify-between">
                 <h1 className="text-3xl font-bold">Jurnal Email-uri</h1>
                 <div className="flex items-center gap-2">
-                    <Button onClick={handleReconcileAll} disabled={reconciling || loading} variant="outline">
-                        <RefreshCw className={`w-4 h-4 mr-2 ${reconciling ? 'animate-spin' : ''}`} />
-                        Verifică inbox-ul
+                    <Button onClick={handleCheckInboxNow} disabled={loading} variant="outline">
+                        <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                        Verifică Inbox (IMAP)
                     </Button>
                     <Button onClick={loadData} disabled={loading}>
                         <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -436,11 +462,12 @@ const JurnalEmailPage = () => {
                 </div>
             </div>
 
-            <Tabs defaultValue="list" className="w-full">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
                 <TabsList>
                     <TabsTrigger value="list">Lista Email-uri</TabsTrigger>
                     <TabsTrigger value="stats">Statistici</TabsTrigger>
                     <TabsTrigger value="tracking">Tracking & Remindere</TabsTrigger>
+            <TabsTrigger value="no-response">Parteneri fără răspuns</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="list" className="space-y-4">
@@ -619,7 +646,14 @@ const JurnalEmailPage = () => {
                                                     
                                     <div className="text-sm font-medium mb-2 text-foreground">
                                         📧 {email.SubiectEmail}
-                                    </div>                                                    {email.MesajEroare && (
+                                    </div>
+                                                    {/* Afișează un preview al răspunsului primit dacă există */}
+                                                    {email.DataRaspuns && email.RaspunsEmail && (
+                                                        <div className="text-xs bg-emerald-50 text-emerald-800 p-2 rounded mb-2 border border-emerald-100" title={email.RaspunsEmail}>
+                                                            <span className="font-semibold">Răspuns:</span> {email.RaspunsEmail.slice(0, 160)}{email.RaspunsEmail.length > 160 ? '…' : ''}
+                                                        </div>
+                                                    )}
+                                                    {email.MesajEroare && (
                                                         <div className="text-xs text-destructive bg-destructive/10 p-2 rounded mt-2">
                                                             ⚠️ {email.MesajEroare}
                                                         </div>
@@ -629,7 +663,7 @@ const JurnalEmailPage = () => {
                                                 {/* Metadata și acțiuni */}
                                                 <div className="flex flex-col items-end gap-2 ml-4">
                                                     <div className="text-xs text-muted-foreground">
-                                                        🕒 {format(new Date(email.DataTrimitere), 'dd.MM.yyyy HH:mm', { locale: ro })}
+                                                        🕒 {formatLocalDateTime(parseLocalDbTimestamp(email.DataTrimitere))}
                                                     </div>
                                                     
                                                     <div className="flex items-center gap-2">
@@ -658,7 +692,7 @@ const JurnalEmailPage = () => {
                                                         <span>🔄 Încercări: {email.NumarIncercari}</span>
                                                     )}
                                                     {email.DataUltimaIncercare && (
-                                                        <span>⏱️ Ultima încercare: {format(new Date(email.DataUltimaIncercare), 'dd.MM.yyyy HH:mm', { locale: ro })}</span>
+                                                        <span>⏱️ Ultima încercare: {formatLocalDateTime(parseLocalDbTimestamp(email.DataUltimaIncercare))}</span>
                                                     )}
                                                 </div>
                                                 <div className="text-xs text-muted-foreground">
@@ -689,7 +723,7 @@ const JurnalEmailPage = () => {
                                                 <TableRow key={email.IdJurnalEmail}>
                                                     <TableCell>
                                                         <div className="text-sm">
-                                                            {format(new Date(email.DataTrimitere), 'dd.MM.yyyy HH:mm', { locale: ro })}
+                                                            {formatLocalDateTime(parseLocalDbTimestamp(email.DataTrimitere))}
                                                         </div>
                                                     </TableCell>
                                                     <TableCell>
@@ -821,7 +855,10 @@ const JurnalEmailPage = () => {
                                 </div>
                                 {checkNowResult && (
                                     <div className="text-sm text-muted-foreground">
-                                        Procesate: <span className="font-semibold">{checkNowResult.processed}</span> emailuri • {format(new Date(checkNowResult.at), 'dd.MM.yyyy HH:mm', { locale: ro })}
+                                        Procesate: <span className="font-semibold">{checkNowResult.processed}</span> emailuri • {formatLocalDateTime(checkNowResult.at)}
+                                        {checkNowResult.lastError && (
+                                            <div className="text-xs text-destructive mt-1">{checkNowResult.lastError}</div>
+                                        )}
                                     </div>
                                 )}
                                 {responseStats && (
@@ -1038,9 +1075,56 @@ const JurnalEmailPage = () => {
                             </CardContent>
                         </Card>
                     </div>
+                </TabsContent>
 
-                    {/* Tabel parteneri neresponsivi */}
-                    {unresponsivePartners.length > 0 && (
+                <TabsContent value="no-response" className="space-y-4">
+                    {/* Filtre pentru lista de parteneri fără răspuns */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center">
+                                <AlertCircle className="w-5 h-5 mr-2" />
+                                Parteneri fără răspuns
+                            </CardTitle>
+                            <CardDescription>
+                                Parteneri care nu au deschis sau răspuns la emailurile din ultimele {reminderDays} zile
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Zile de analiză</Label>
+                                    <Select value={reminderDays.toString()} onValueChange={(value) => setReminderDays(parseInt(value))}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="3">3 zile</SelectItem>
+                                            <SelectItem value="7">7 zile</SelectItem>
+                                            <SelectItem value="14">14 zile</SelectItem>
+                                            <SelectItem value="30">30 zile</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="flex items-end">
+                                    <Button variant="outline" onClick={loadUnresponsiveOnly} disabled={loading}>
+                                        <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                                        Reîncarcă lista
+                                    </Button>
+                                </div>
+                                {unresponsivePartners.length > 0 && (
+                                    <div className="flex items-end">
+                                        <div className="p-3 bg-yellow-50 rounded-lg w-full text-center">
+                                            <div className="text-sm text-yellow-600">Neresponsivi găsiți</div>
+                                            <div className="text-lg font-semibold text-yellow-800">{unresponsivePartners.length} parteneri</div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+            {/* Tabel parteneri neresponsivi (limitare afișare ~5 rânduri, cu scroll) */}
+                    {unresponsivePartners.length > 0 ? (
                         <Card>
                             <CardHeader>
                                 <CardTitle className="flex items-center">
@@ -1048,24 +1132,61 @@ const JurnalEmailPage = () => {
                                     Parteneri Neresponsivi ({unresponsivePartners.length})
                                 </CardTitle>
                                 <CardDescription>
-                                    Parteneri care nu au deschis sau răspuns la emailurile din ultimele {reminderDays} zile
+                                    Lista ultimelor emailuri fără răspuns
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <div className="overflow-x-auto">
+                <div className="overflow-x-auto max-h-[420px] overflow-y-auto border rounded-md">
                                     <Table>
-                                        <TableHeader>
+                    <TableHeader className="sticky top-0 bg-background z-10 shadow-sm border-b">
                                             <TableRow>
-                                                <TableHead>Destinatar</TableHead>
-                                                <TableHead>Subiect</TableHead>
-                                                <TableHead>Data Trimitere</TableHead>
-                                                <TableHead>Zile</TableHead>
-                                                <TableHead>Prioritate</TableHead>
+                                                <TableHead>
+                                                    <button className="flex items-center gap-1" onClick={() => toggleUnrespSort('destinatar')}>
+                                                        Destinatar {getUnrespSortIcon('destinatar')}
+                                                    </button>
+                                                </TableHead>
+                                                <TableHead>
+                                                    <button className="flex items-center gap-1" onClick={() => toggleUnrespSort('subiect')}>
+                                                        Subiect {getUnrespSortIcon('subiect')}
+                                                    </button>
+                                                </TableHead>
+                                                <TableHead>
+                                                    <button className="flex items-center gap-1" onClick={() => toggleUnrespSort('data')}>
+                                                        Data Trimitere {getUnrespSortIcon('data')}
+                                                    </button>
+                                                </TableHead>
+                                                <TableHead>
+                                                    <button className="flex items-center gap-1" onClick={() => toggleUnrespSort('zile')}>
+                                                        Zile {getUnrespSortIcon('zile')}
+                                                    </button>
+                                                </TableHead>
+                                                <TableHead>
+                                                    <button className="flex items-center gap-1" onClick={() => toggleUnrespSort('prioritate')}>
+                                                        Prioritate {getUnrespSortIcon('prioritate')}
+                                                    </button>
+                                                </TableHead>
                                                 <TableHead>Status</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {unresponsivePartners.map((partner, index) => (
+                                            {([...unresponsivePartners].sort((a: any, b: any) => {
+                                                const dir = unrespSortOrder === 'asc' ? 1 : -1;
+                                                const priorityRank: Record<string, number> = { 'URGENT': 3, 'HIGH': 2, 'NORMAL': 1, 'LOW': 0 };
+                                                const val = (field: UnrespSortField, item: any) => {
+                                                    switch (field) {
+                                                        case 'destinatar': return (item.NumeDestinatar || item.EmailDestinatar || '').toString().toLowerCase();
+                                                        case 'subiect': return (item.SubiectEmail || '').toString().toLowerCase();
+                                                        case 'data': return parseLocalDbTimestamp(item.DataTrimitere)?.getTime?.() || 0;
+                                                        case 'zile': return Number(item.ZileDeLaTrimitere) || 0;
+                                                        case 'prioritate': return priorityRank[(item.PriorityLevel || 'NORMAL').toUpperCase()] ?? 1;
+                                                    }
+                                                };
+                                                const av = val(unrespSortBy, a);
+                                                const bv = val(unrespSortBy, b);
+                                                if (av < bv) return -1 * dir;
+                                                if (av > bv) return 1 * dir;
+                                                return 0;
+                                            })).map((partner: any, index: number) => (
                                                 <TableRow key={index}>
                                                     <TableCell>
                                                         <div>
@@ -1079,7 +1200,7 @@ const JurnalEmailPage = () => {
                                                         </div>
                                                     </TableCell>
                                                     <TableCell>
-                                                        {format(new Date(partner.DataTrimitere), 'dd/MM/yyyy', { locale: ro })}
+                                                        {formatLocalDateTime(parseLocalDbTimestamp(partner.DataTrimitere))}
                                                     </TableCell>
                                                     <TableCell>
                                                         <Badge variant={partner.ZileDeLaTrimitere >= 14 ? 'destructive' : 'secondary'}>
@@ -1106,6 +1227,15 @@ const JurnalEmailPage = () => {
                                             ))}
                                         </TableBody>
                                     </Table>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <Card>
+                            <CardContent>
+                                <div className="text-center py-8 text-muted-foreground">
+                                    <h3 className="text-lg font-semibold mb-2">Nu sunt parteneri fără răspuns</h3>
+                                    <p>Toți partenerii au răspuns sau nu există emailuri trimise în intervalul selectat.</p>
                                 </div>
                             </CardContent>
                         </Card>

@@ -280,7 +280,7 @@ class ReportsService {
         companyStats,
         teamPerformance,
         monthlyTrends,
-        lastUpdate: new Date().toISOString()
+  lastUpdate: new Date().toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })
       };
 
       console.log('✅ Date rapoarte încărcate cu succes din JurnalEmail (DOAR CONFIRMARE+SUCCESS)');

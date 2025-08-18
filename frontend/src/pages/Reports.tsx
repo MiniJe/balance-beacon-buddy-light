@@ -155,7 +155,8 @@ const Reports = () => {
       const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
       const sessionInfo = {
         idSesiune: sesiuniService.getCurrentSessionId() || undefined,
-        data: new Date().toISOString(),
+        // folosim milisecunde epoch locale (interpretate corect ca local când sunt afișate)
+        data: Date.now(),
         categoria: activeTab === 'companies' ? 'cereri' : activeTab, // simplu: corelăm tabul curent sau filtrul
       };
       const response = await fetch(`${baseUrl}/api/pdf/download`, {
@@ -195,7 +196,7 @@ const Reports = () => {
       const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
       const sessionInfo = {
         idSesiune: sesiuniService.getCurrentSessionId() || undefined,
-        data: new Date().toISOString(),
+        data: Date.now(),
         categoria: activeTab === 'companies' ? 'cereri' : activeTab,
       };
       const response = await fetch(`${baseUrl}/api/pdf/print`, {
@@ -239,7 +240,7 @@ const Reports = () => {
       const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
       const sessionInfo = {
         idSesiune: sesiuniService.getCurrentSessionId() || undefined,
-        data: new Date().toISOString(),
+        data: Date.now(),
         categoria: activeTab === 'companies' ? 'cereri' : activeTab,
       };
       const response = await fetch(`${baseUrl}/api/pdf/email`, {

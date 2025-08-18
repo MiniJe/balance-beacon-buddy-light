@@ -63,15 +63,15 @@ export const useSetariBackup = () => {
       
       if (response.data.success) {
         // Adaptare pentru ApiResponseHelper - datele sunt în response.data.data
-        const backups = response.data.data || [];
+  const backups = response.data.data || [];
         // Convertim backup-urile locale la formatul așteptat
-        const formattedBackups = backups.map((backup: any) => ({
+  const formattedBackups = backups.map((backup: any) => ({
           ID: backup.id || backup.backupId,
           BackupID: backup.backupId || backup.id,
           TipBackup: 'full' as const,
           StatusBackup: 'completed' as const,
-          DataCreare: backup.createdAt || new Date().toISOString(),
-          DataFinalizare: backup.createdAt || new Date().toISOString(),
+          DataCreare: backup.createdAt || new Date().toLocaleString('ro-RO'),
+          DataFinalizare: backup.createdAt || new Date().toLocaleString('ro-RO'),
           DurataSecunde: 0,
           NumarBloburi: 0,
           DimensiuneBlobBytes: backup.totalSize || 0,

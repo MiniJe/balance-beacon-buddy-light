@@ -298,7 +298,7 @@ export const useSoldSettings = () => {
           console.log(`📄 Template personalizat preview:`, personalizedTemplate.substring(0, 200) + '...');
           
           // Apel real la backend pentru trimiterea email-ului
-          const response = await fetch(`${API_BASE_URL}/email/send-fise-partener`, {
+          const response = await fetch(`${API_BASE_URL}/fise-partener/send`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${localStorage.getItem('token')}`,

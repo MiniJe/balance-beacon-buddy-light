@@ -1,9 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Check, FileText } from "lucide-react";
+import { Check, FileText, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { ro } from "date-fns/locale";
+import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 interface DocumentGenerat {
   idDocument: string;
@@ -26,7 +28,7 @@ interface Step4ReviewSendProps {
   emailSubject: string;
   documentsGenerated: DocumentGenerat[];
   onBack: () => void;
-  onSend: () => void;
+  onSend: () => Promise<void> | void;
 }
 
 export const Step4ReviewSend = ({
@@ -38,9 +40,31 @@ export const Step4ReviewSend = ({
   onBack,
   onSend
 }: Step4ReviewSendProps) => {
+  const navigate = useNavigate();
+  const [isSending, setIsSending] = useState(false);
+  const [hasSent, setHasSent] = useState(false);
+  const sendingRef = useRef(false);
+
   const getCategoryDisplayName = (category: string) => {
     if (category === "all") return "Toate categoriile";
     return category.replace('_', ' ').toUpperCase();
+  };
+
+  const handleSend = async () => {
+    if (sendingRef.current || isSending || hasSent) return;
+    sendingRef.current = true;
+    setIsSending(true);
+    try {
+      await Promise.resolve(onSend());
+      setHasSent(true);
+      // Redirect to Dashboard after the session completes
+      navigate("/");
+    } catch (err) {
+      // In case of failure, allow retry
+      setIsSending(false);
+      console.error("Eroare la trimiterea cererilor:", err);
+      sendingRef.current = false;
+    }
   };
 
   return (
@@ -107,11 +131,18 @@ export const Step4ReviewSend = ({
         </div>
       </CardContent>
       <CardFooter className="justify-between">
-        <Button variant="outline" onClick={onBack}>
+        <Button variant="outline" onClick={onBack} disabled={isSending}>
           Înapoi
         </Button>
-        <Button onClick={onSend}>
-          Trimite Cererile
+        <Button onClick={handleSend} disabled={isSending || hasSent}>
+          {isSending ? (
+            <span className="inline-flex items-center">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Se trimit cererile...
+            </span>
+          ) : (
+            "Trimite Cererile"
+          )}
         </Button>
       </CardFooter>
     </Card>

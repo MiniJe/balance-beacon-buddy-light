@@ -61,7 +61,11 @@ export function CalendarView() {
   // Get requests for selected date
   const getRequestsForDate = (date: Date | undefined) => {
     if (!date) return [];
-    const dateStr = date.toISOString().split('T')[0];
+    // Cheie de dată locală (YYYY-MM-DD) în timezone-ul utilizatorului
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
     return mockRequests.filter(request => 
       request.dueDate === dateStr || request.createdAt === dateStr
     );
